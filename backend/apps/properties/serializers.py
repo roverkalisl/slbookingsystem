@@ -3,6 +3,7 @@ Serializers for property management.
 """
 
 from rest_framework import serializers
+from django.db import models
 from .models import (
     PropertyType, Amenity, Destination, Property, PropertyPhoto,
     PropertyAmenity, RoomType, RoomTypePhoto, RoomTypeAmenity,
@@ -276,3 +277,104 @@ class PricingSerializer(serializers.ModelSerializer):
             'currency', 'seasonal_rates', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class PropertyCardSerializer(serializers.ModelSerializer):
+    """Compact property card for search results"""
+    property_type_name = serializers.CharField(source='property_type.name', read_only=True)
+    amenities = serializers.SerializerMethodField()
+    min_price = serializers.SerializerMethodField()
+    room_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Property
+        fields = [
+            'id', 'slug', 'name', 'city', 'property_type_name',
+            'cover_photo_url', 'average_rating', 'total_reviews',
+            'amenities', 'min_price', 'room_count', 'short_description'
+        ]
+
+    def get_amenities(self, obj):
+        """Get first 3 amenities for card display"""
+        amenities = obj.propertyamenity_set.all()[:3]
+        return [{'id': pa.amenity.id, 'name': pa.amenity.name} for pa in amenities]
+
+    def get_min_price(self, obj):
+        """Get minimum room price"""
+        min_price = obj.room_types.aggregate(
+            min=models.Min('pricing__base_price')
+        )['min']
+        return str(min_price) if min_price else None
+
+    def get_room_count(self, obj):
+        """Get number of room types"""
+        return obj.room_types.count()
+
+
+class SearchFilterSerializer(serializers.Serializer):
+    """Serializer for search filter options"""
+    city = serializers.CharField(required=False)
+    district = serializers.CharField(required=False)
+    province = serializers.CharField(required=False)
+    property_types = serializers.ListField(child=serializers.IntegerField(), required=False)
+    amenities = serializers.ListField(child=serializers.IntegerField(), required=False)
+    min_price = serializers.DecimalField(max_digits=12, decimal_places=2, required=False)
+    max_price = serializers.DecimalField(max_digits=12, decimal_places=2, required=False)
+    min_rating = serializers.FloatField(required=False)
+    check_in = serializers.DateField(required=False)
+    check_out = serializers.DateField(required=False)
+    adults = serializers.IntegerField(required=False, min_value=1)
+    children = serializers.IntegerField(required=False, min_value=0)
+    search = serializers.CharField(required=False)
+    sort_by = serializers.ChoiceField(
+        choices=['newest', 'rating', 'price', 'name', 'reviews', 'popular'],
+        required=False
+    )
+    sort_direction = serializers.ChoiceField(
+        choices=['asc', 'desc'],
+        required=False
+    )
+    page = serializers.IntegerField(required=False, min_value=1)
+    page_size = serializers.IntegerField(required=False, min_value=1, max_value=100)
+
+
+class DestinationDetailSerializer(serializers.ModelSerializer):
+    """Detailed destination with properties"""
+    properties = serializers.SerializerMethodField()
+    property_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Destination
+        fields = [
+            'id', 'name', 'slug', 'description', 'cover_image_url',
+            'city', 'district', 'province',
+            'seo_title', 'seo_description', 'seo_keywords',
+            'property_count', 'properties', 'is_published'
+        ]
+
+    def get_properties(self, obj):
+        """Get first 12 properties in destination"""
+        properties = Property.objects.filter(
+            status='published',
+            city=obj.city
+        )[:12]
+        return PropertyCardSerializer(properties, many=True).data
+
+    def get_property_count(self, obj):
+        """Count published properties in destination"""
+        return Property.objects.filter(
+            status='published',
+            city=obj.city
+        ).count()
+
+
+class SearchResultsSerializer(serializers.Serializer):
+    """Serializer for search results response"""
+    count = serializers.IntegerField()
+    next = serializers.URLField(required=False, allow_null=True)
+    previous = serializers.URLField(required=False, allow_null=True)
+    results = PropertyCardSerializer(many=True)
+    filters_applied = serializers.DictField(required=False)
+
+    class Meta:
+        fields = ['count', 'next', 'previous', 'results', 'filters_applied']

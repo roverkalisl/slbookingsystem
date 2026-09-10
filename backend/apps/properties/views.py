@@ -21,9 +21,12 @@ from .serializers import (
     PropertyCreateUpdateSerializer, PropertyApprovalSerializer,
     RoomTypeListSerializer, RoomTypeDetailSerializer,
     PropertyPhotoSerializer, RoomTypePhotoSerializer,
-    PricingSerializer, SeasonalRateSerializer
+    PricingSerializer, SeasonalRateSerializer,
+    PropertyCardSerializer, SearchFilterSerializer,
+    DestinationDetailSerializer, SearchResultsSerializer
 )
 from .pricing import PricingCalculator
+from .search import PropertySearchService, DestinationSearchService, SearchFilters
 
 
 class PropertyTypeViewSet(viewsets.ReadOnlyModelViewSet):
@@ -451,3 +454,313 @@ class RoomTypeViewSet(viewsets.ModelViewSet):
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+
+class SearchViewSet(viewsets.ViewSet):
+    """
+    Advanced property search with filtering, sorting, and pagination.
+
+    Query parameters:
+    - city: Filter by city name
+    - district: Filter by district
+    - province: Filter by province
+    - property_types: Comma-separated property type IDs
+    - amenities: Comma-separated amenity IDs
+    - min_price: Minimum room price
+    - max_price: Maximum room price
+    - min_rating: Minimum property rating
+    - check_in: Check-in date (YYYY-MM-DD)
+    - check_out: Check-out date (YYYY-MM-DD)
+    - adults: Number of adults
+    - children: Number of children
+    - search: Text search (name, description, address)
+    - sort_by: Sort field (newest, rating, price, name, reviews, popular)
+    - sort_direction: asc or desc
+    - page: Page number (default 1)
+    - page_size: Items per page (default 20, max 100)
+    """
+
+    permission_classes = [permissions.AllowAny]
+
+    @action(detail=False, methods=['get'])
+    def advanced(self, request):
+        """
+        Advanced search with all filters.
+
+        GET /api/properties/search/advanced/?city=Colombo&min_price=1000&sort_by=rating
+        """
+        # Parse query parameters into filters
+        filters = SearchFilters.from_query_params(request.query_params)
+
+        # Create search service and apply filters
+        search_service = PropertySearchService()
+        search_service.build_query(filters)
+
+        # Get pagination parameters
+        page = int(request.query_params.get('page', 1))
+        page_size = min(int(request.query_params.get('page_size', 20)), 100)
+
+        # Calculate offset
+        offset = (page - 1) * page_size
+
+        # Get total count
+        total_count = search_service.count()
+
+        # Get paginated results
+        results = search_service.get_results(limit=page_size, offset=offset)
+
+        # Serialize results
+        serializer = PropertyCardSerializer(results, many=True)
+
+        # Build pagination URLs (simplified)
+        next_url = None
+        previous_url = None
+
+        if offset + page_size < total_count:
+            next_url = request.build_absolute_uri(f"?page={page + 1}&page_size={page_size}")
+
+        if page > 1:
+            previous_url = request.build_absolute_uri(f"?page={page - 1}&page_size={page_size}")
+
+        return Response(
+            {
+                'success': True,
+                'count': total_count,
+                'page': page,
+                'page_size': page_size,
+                'total_pages': (total_count + page_size - 1) // page_size,
+                'next': next_url,
+                'previous': previous_url,
+                'results': serializer.data,
+                'filters_applied': filters
+            },
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=False, methods=['get'])
+    def by_destination(self, request):
+        """
+        Search properties by destination (city).
+
+        GET /api/properties/search/by-destination/?city=Colombo
+        """
+        city = request.query_params.get('city')
+
+        if not city:
+            return Response(
+                {'error': 'city parameter is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        search_service = PropertySearchService()
+        search_service.filter_by_destination(city=city)
+
+        page = int(request.query_params.get('page', 1))
+        page_size = min(int(request.query_params.get('page_size', 20)), 100)
+        offset = (page - 1) * page_size
+
+        total_count = search_service.count()
+        results = search_service.get_results(limit=page_size, offset=offset)
+
+        serializer = PropertyCardSerializer(results, many=True)
+
+        return Response(
+            {
+                'success': True,
+                'destination': city,
+                'count': total_count,
+                'results': serializer.data
+            },
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=False, methods=['get'])
+    def by_price_range(self, request):
+        """
+        Search properties by price range.
+
+        GET /api/properties/search/by-price-range/?min_price=1000&max_price=10000
+        """
+        try:
+            min_price = request.query_params.get('min_price')
+            max_price = request.query_params.get('max_price')
+
+            if min_price:
+                min_price = float(min_price)
+            if max_price:
+                max_price = float(max_price)
+
+            search_service = PropertySearchService()
+            search_service.filter_by_price_range(min_price=min_price, max_price=max_price)
+
+            page = int(request.query_params.get('page', 1))
+            page_size = min(int(request.query_params.get('page_size', 20)), 100)
+            offset = (page - 1) * page_size
+
+            total_count = search_service.count()
+            results = search_service.get_results(limit=page_size, offset=offset)
+
+            serializer = PropertyCardSerializer(results, many=True)
+
+            return Response(
+                {
+                    'success': True,
+                    'count': total_count,
+                    'results': serializer.data
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except ValueError as e:
+            return Response(
+                {'error': f'Invalid price range: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=['get'])
+    def featured(self, request):
+        """
+        Get featured/most popular properties.
+
+        GET /api/properties/search/featured/?limit=10
+        """
+        limit = int(request.query_params.get('limit', 10))
+        limit = min(limit, 50)
+
+        search_service = PropertySearchService()
+        search_service.sort_by('popular', 'desc')
+
+        results = search_service.get_results(limit=limit)
+        serializer = PropertyCardSerializer(results, many=True)
+
+        return Response(
+            {
+                'success': True,
+                'data': serializer.data
+            },
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=False, methods=['get'])
+    def newly_added(self, request):
+        """
+        Get newly added properties.
+
+        GET /api/properties/search/newly-added/?limit=10
+        """
+        limit = int(request.query_params.get('limit', 10))
+        limit = min(limit, 50)
+
+        search_service = PropertySearchService()
+        search_service.sort_by('newest', 'desc')
+
+        results = search_service.get_results(limit=limit)
+        serializer = PropertyCardSerializer(results, many=True)
+
+        return Response(
+            {
+                'success': True,
+                'data': serializer.data
+            },
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=False, methods=['get'])
+    def top_rated(self, request):
+        """
+        Get highest rated properties.
+
+        GET /api/properties/search/top-rated/?limit=10
+        """
+        limit = int(request.query_params.get('limit', 10))
+        limit = min(limit, 50)
+
+        search_service = PropertySearchService()
+        search_service.sort_by('rating', 'desc')
+
+        results = search_service.get_results(limit=limit)
+        serializer = PropertyCardSerializer(results, many=True)
+
+        return Response(
+            {
+                'success': True,
+                'data': serializer.data
+            },
+            status=status.HTTP_200_OK
+        )
+
+
+class DestinationViewSetDetail(viewsets.ViewSet):
+    """Destination detail view with properties"""
+
+    permission_classes = [permissions.AllowAny]
+
+    def retrieve(self, request, slug=None):
+        """
+        Get destination details with properties.
+
+        GET /api/properties/destinations/{slug}/
+        """
+        destination, properties = DestinationSearchService.get_properties_in_destination(slug)
+
+        if not destination:
+            return Response(
+                {'error': 'Destination not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        destination_serializer = DestinationDetailSerializer(destination)
+
+        return Response(
+            {
+                'success': True,
+                'data': destination_serializer.data
+            },
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=False, methods=['get'])
+    def popular(self, request):
+        """
+        Get popular destinations.
+
+        GET /api/properties/destinations/popular/
+        """
+        limit = int(request.query_params.get('limit', 10))
+        limit = min(limit, 50)
+
+        destinations = DestinationSearchService.get_popular_destinations(limit)
+        serializer = DestinationSerializer(destinations, many=True)
+
+        return Response(
+            {
+                'success': True,
+                'data': serializer.data
+            },
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=False, methods=['get'])
+    def by_region(self, request):
+        """
+        Get destinations by region.
+
+        GET /api/properties/destinations/by-region/?province=Southern
+        """
+        province = request.query_params.get('province')
+        district = request.query_params.get('district')
+
+        destinations = DestinationSearchService.get_destinations_by_region(
+            province=province,
+            district=district
+        )
+
+        serializer = DestinationSerializer(destinations, many=True)
+
+        return Response(
+            {
+                'success': True,
+                'data': serializer.data
+            },
+            status=status.HTTP_200_OK
+        )
