@@ -1,7 +1,13 @@
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+
+from .views import BookingViewSet
 
 app_name = 'bookings'
 
+router = DefaultRouter()
+router.register(r'', BookingViewSet, basename='booking')
+
 urlpatterns = [
-    # TODO: Add booking endpoints
+    path('', include(router.urls)),
 ]
