@@ -1,5 +1,8 @@
 from django.contrib import admin
-from .models import PropertyType, Amenity, Destination, Property, PropertyPhoto, PropertyAmenity, RoomType, RoomTypePhoto, RoomTypeAmenity
+from .models import (
+    PropertyType, Amenity, Destination, Property, PropertyPhoto, PropertyAmenity,
+    RoomType, RoomTypePhoto, RoomTypeAmenity, Pricing, SeasonalRate
+)
 
 @admin.register(PropertyType)
 class PropertyTypeAdmin(admin.ModelAdmin):
@@ -37,3 +40,16 @@ class RoomTypeAdmin(admin.ModelAdmin):
 @admin.register(RoomTypePhoto)
 class RoomTypePhotoAdmin(admin.ModelAdmin):
     list_display = ['room_type', 'is_cover', 'display_order']
+
+
+@admin.register(Pricing)
+class PricingAdmin(admin.ModelAdmin):
+    list_display = ['room_type', 'base_price', 'weekend_price', 'currency']
+    readonly_fields = ['created_at', 'updated_at']
+
+
+@admin.register(SeasonalRate)
+class SeasonalRateAdmin(admin.ModelAdmin):
+    list_display = ['name', 'room_type', 'start_date', 'end_date', 'price_per_night']
+    list_filter = ['room_type', 'start_date', 'end_date']
+    search_fields = ['name']

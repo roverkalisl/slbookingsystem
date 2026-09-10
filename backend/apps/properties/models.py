@@ -3,6 +3,7 @@ Property models for SL Booking.
 """
 
 import uuid
+from decimal import Decimal
 from django.db import models
 from django.utils.text import slugify
 from apps.core.models import User
@@ -257,3 +258,57 @@ class RoomTypeAmenity(models.Model):
 
     def __str__(self):
         return f"{self.room_type.name} - {self.amenity.name}"
+
+
+class Pricing(models.Model):
+    """Base pricing for room types"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    room_type = models.OneToOneField(RoomType, on_delete=models.CASCADE, related_name='pricing', unique=True)
+
+    base_price = models.DecimalField(max_digits=12, decimal_places=2)
+    weekend_price = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
+
+    extra_guest_fee = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    child_fee = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+
+    service_fee_percent = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('5.0'))
+    tax_percent = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('10.0'))
+
+    currency = models.CharField(max_length=3, default='LKR')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'pricing'
+        indexes = [
+            models.Index(fields=['room_type_id']),
+        ]
+
+    def __str__(self):
+        return f"Pricing for {self.room_type.name}: {self.base_price} {self.currency}/night"
+
+
+class SeasonalRate(models.Model):
+    """Seasonal pricing overrides base pricing"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    room_type = models.ForeignKey(RoomType, on_delete=models.CASCADE, related_name='seasonal_rates')
+
+    name = models.CharField(max_length=100)  # "High Season", "Off Season", etc.
+    price_per_night = models.DecimalField(max_digits=12, decimal_places=2)
+
+    start_date = models.DateField()
+    end_date = models.DateField()
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'seasonal_rates'
+        indexes = [
+            models.Index(fields=['room_type_id']),
+            models.Index(fields=['start_date', 'end_date']),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.start_date} - {self.end_date})"
