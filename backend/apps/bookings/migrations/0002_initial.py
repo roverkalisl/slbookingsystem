@@ -111,11 +111,4 @@ class Migration(migrations.Migration):
                 fields=["payment_status"], name="bookings_payment_3ea9ef_idx"
             ),
         ),
-        migrations.AddConstraint(
-            model_name="booking",
-            constraint=models.CheckConstraint(
-                check=models.Q(("check_in_date__lt", models.F("check_out_date"))),
-                name="check_in_before_checkout",
-            ),
-        ),
     ]

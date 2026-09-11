@@ -81,12 +81,7 @@ class Booking(models.Model):
             models.Index(fields=['status']),
             models.Index(fields=['payment_status']),
         ]
-        constraints = [
-            models.CheckConstraint(
-                check=models.Q(check_in_date__lt=models.F('check_out_date')),
-                name='check_in_before_checkout'
-            )
-        ]
+        constraints = []
 
     def __str__(self):
         return f"Booking {self.booking_reference}"
