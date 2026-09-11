@@ -19,6 +19,7 @@ interface AuthStore {
     password: string
     first_name: string
     last_name: string
+    role: string
   }) => Promise<void>
   logout: () => Promise<void>
   fetchUser: () => Promise<void>
@@ -41,8 +42,30 @@ export const useAuth = create<AuthStore>((set) => ({
         isLoading: false,
       })
     } catch (error: any) {
+      let errorMessage = 'Login failed'
+
+      // Handle different error response formats
+      if (error.response?.data) {
+        const data = error.response.data
+        if (typeof data === 'object') {
+          // Check for specific field errors
+          const firstError = Object.values(data)[0]
+          if (Array.isArray(firstError) && firstError[0]) {
+            errorMessage = String(firstError[0])
+          } else if (data.detail) {
+            errorMessage = data.detail
+          } else if (data.message) {
+            errorMessage = data.message
+          } else if (typeof data === 'string') {
+            errorMessage = data
+          }
+        }
+      } else if (error.message) {
+        errorMessage = error.message
+      }
+
       set({
-        error: error.response?.data?.detail || 'Login failed',
+        error: errorMessage,
         isLoading: false,
       })
       throw error
@@ -59,8 +82,30 @@ export const useAuth = create<AuthStore>((set) => ({
         isLoading: false,
       })
     } catch (error: any) {
+      let errorMessage = 'Registration failed'
+
+      // Handle different error response formats
+      if (error.response?.data) {
+        const data = error.response.data
+        if (typeof data === 'object') {
+          // Check for specific field errors
+          const firstError = Object.values(data)[0]
+          if (Array.isArray(firstError) && firstError[0]) {
+            errorMessage = String(firstError[0])
+          } else if (data.detail) {
+            errorMessage = data.detail
+          } else if (data.message) {
+            errorMessage = data.message
+          } else if (typeof data === 'string') {
+            errorMessage = data
+          }
+        }
+      } else if (error.message) {
+        errorMessage = error.message
+      }
+
       set({
-        error: error.response?.data?.detail || 'Registration failed',
+        error: errorMessage,
         isLoading: false,
       })
       throw error

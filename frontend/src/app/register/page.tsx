@@ -17,6 +17,7 @@ interface RegisterForm {
   email: string
   password: string
   password_confirm: string
+  role: string
 }
 
 export default function RegisterPage() {
@@ -38,6 +39,7 @@ export default function RegisterPage() {
         password: data.password,
         first_name: data.first_name,
         last_name: data.last_name,
+        role: data.role,
       })
       router.push('/bookings')
     } catch (err) {
@@ -118,6 +120,22 @@ export default function RegisterPage() {
                 className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary focus:border-transparent"
               />
               {errors.email && <p className="text-red-600 text-sm mt-1">{errors.email.message}</p>}
+            </div>
+
+            {/* Role */}
+            <div>
+              <label className="block text-sm font-semibold mb-2">I am a</label>
+              <select
+                {...register('role', {
+                  required: 'Please select your account type'
+                })}
+                className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary focus:border-transparent"
+              >
+                <option value="">Select account type</option>
+                <option value="guest">Guest (I want to book accommodations)</option>
+                <option value="property_owner">Property Owner (I want to list properties)</option>
+              </select>
+              {errors.role && <p className="text-red-600 text-sm mt-1">{errors.role.message}</p>}
             </div>
 
             {/* Password */}

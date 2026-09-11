@@ -142,7 +142,11 @@ class RegisterSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         """Create new user"""
+        # Generate username from email
+        username = validated_data['email'].split('@')[0]
+
         user = User.objects.create_user(
+            username=username,
             email=validated_data['email'],
             first_name=validated_data['first_name'],
             last_name=validated_data['last_name'],

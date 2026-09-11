@@ -7,10 +7,17 @@ export interface User {
   email: string
   first_name: string
   last_name: string
-  phone_number?: string
-  profile_picture?: string
-  is_verified: boolean
+  phone?: string
+  avatar_url?: string
+  bio?: string
+  email_verified?: boolean
+  phone_verified?: boolean
+  preferred_language?: string
+  notification_email?: boolean
+  notification_sms?: boolean
+  roles?: string[]
   created_at: string
+  updated_at?: string
 }
 
 export interface AuthResponse {

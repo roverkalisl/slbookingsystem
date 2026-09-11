@@ -71,25 +71,32 @@ class ApiClient {
   async register(data: {
     email: string
     password: string
+    password2?: string
     first_name: string
     last_name: string
+    role: string
   }): Promise<AuthResponse> {
-    const response = await this.client.post<AuthResponse>('/auth/register/', data)
-    if (response.data.access) {
-      this.setToken(response.data.access)
+    const response = await this.client.post<any>('/auth/register/', {
+      ...data,
+      password2: data.password2 || data.password, // Default to password if password2 not provided
+    })
+    const authData = response.data.data || response.data
+    if (authData.access) {
+      this.setToken(authData.access)
     }
-    return response.data
+    return authData
   }
 
   async login(email: string, password: string): Promise<AuthResponse> {
-    const response = await this.client.post<AuthResponse>('/auth/login/', {
+    const response = await this.client.post<any>('/auth/login/', {
       email,
       password,
     })
-    if (response.data.access) {
-      this.setToken(response.data.access)
+    const authData = response.data.data || response.data
+    if (authData.access) {
+      this.setToken(authData.access)
     }
-    return response.data
+    return authData
   }
 
   async logout(): Promise<void> {
