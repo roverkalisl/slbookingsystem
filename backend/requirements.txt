@@ -1,9 +1,9 @@
 # ============================================
 # SL Booking - Production Requirements
-# Python 3.12.1 Compatible
+# Python 3.12 - VERIFIED VERSIONS ONLY
 # ============================================
 
-# Core Django Framework
+# Django Framework & REST API
 Django==5.0.1
 djangorestframework==3.14.0
 djangorestframework-simplejwt==5.5.1
@@ -11,45 +11,48 @@ django-cors-headers==4.3.1
 django-filter==24.1
 drf-spectacular==0.27.1
 
-# Python utilities
+# Database
+psycopg2-binary==2.9.10
+
+# Static Files & Media
+whitenoise==6.7.0
+Pillow==11.3.0
+
+# Configuration
 python-decouple==3.8
 dj-database-url==2.1.0
 
-# Image handling (Pillow 11.3.0+ for Python 3.12)
-Pillow==11.3.0
-
-# Database (PostgreSQL)
-psycopg2-binary==2.9.10
-
-# Web Server & Static Files
+# Web Server
 gunicorn==22.0.0
-whitenoise==6.7.0
 
-# Async Task Queue
+# Async Tasks (Optional - if Celery is used)
 celery==5.4.0
 redis==5.1.0
 
-# HTTP & API Requests
-requests==2.32.3
-
-# Media Storage (Cloudinary - Latest stable version)
-# Note: cloudinary==2.0.1 does not exist
-# Using latest available: 1.46.2
-cloudinary==1.46.2
-
-# Payment Processing
-stripe==12.0.0
-
-# SMS/Communication
-twilio==9.2.4
-
-# Email Service
-django-sendgrid-v5==1.9.1
-
-# Monitoring & Error Tracking
+# Monitoring (Optional - if Sentry is used)
 sentry-sdk==2.0.0
 
-# Testing (Development/CI only)
+# HTTP Requests
+requests==2.32.3
+
+# ============================================
+# REMOVED - Not in current use:
+# ============================================
+# cloudinary==1.46.2  (OPTIONAL - if using Cloudinary)
+# stripe==12.0.0      (OPTIONAL - if using Stripe payments)
+# twilio==9.2.4       (OPTIONAL - if using Twilio SMS)
+# django-sendgrid-v5  (NOT USED - use Django's email backend instead)
+#
+# NOTE: Email is handled via Django's default email backend
+# Configure SMTP or SendGrid API via environment variables:
+# - EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+# - EMAIL_HOST=smtp.sendgrid.net
+# - EMAIL_PORT=587
+# - EMAIL_HOST_USER=apikey
+# - EMAIL_HOST_PASSWORD=<sendgrid-api-key>
+# ============================================
+
+# Testing (Development only)
 pytest==8.1.1
 pytest-django==4.7.0
 factory-boy==3.3.0
