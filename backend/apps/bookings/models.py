@@ -83,7 +83,7 @@ class Booking(models.Model):
         ]
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(check_in_date__lt=models.F('check_out_date')),
+                check=models.Q(check_in_date__lt=models.F('check_out_date')),
                 name='check_in_before_checkout'
             )
         ]
