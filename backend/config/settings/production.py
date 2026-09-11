@@ -242,41 +242,29 @@ LOGGING = {
         'console': {
             'level': 'INFO',
             'class': 'logging.StreamHandler',
-            'formatter': 'simple',
-        },
-        'file': {
-            'level': 'INFO',
-            'class': 'logging.handlers.RotatingFileHandler',
-            'filename': config('LOG_DIR', default='/var/log/slbooking') + '/django.log',
-            'maxBytes': 1024 * 1024 * 10,  # 10 MB
-            'backupCount': 10,
-            'formatter': 'verbose',
-        },
-        'error_file': {
-            'level': 'ERROR',
-            'class': 'logging.handlers.RotatingFileHandler',
-            'filename': config('LOG_DIR', default='/var/log/slbooking') + '/errors.log',
-            'maxBytes': 1024 * 1024 * 10,
-            'backupCount': 20,
             'formatter': 'verbose',
         },
     },
     'loggers': {
         'django': {
-            'handlers': ['console', 'file', 'error_file'],
+            'handlers': ['console'],
             'level': 'INFO',
             'propagate': False,
         },
         'django.request': {
-            'handlers': ['error_file'],
-            'level': 'ERROR',
-            'propagate': False,
-        },
-        'apps': {
-            'handlers': ['file', 'error_file'],
+            'handlers': ['console'],
             'level': 'INFO',
             'propagate': False,
         },
+        'apps': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
     },
 }
 
@@ -392,9 +380,8 @@ ENABLE_QUERY_CACHING = True
 SEARCH_CACHE_TIMEOUT = 1800
 
 # ============================================================================
-# ENSURE LOG DIRECTORY EXISTS
+# LOGGING NOTES
 # ============================================================================
-
-import os
-LOG_DIR = config('LOG_DIR', default='/var/log/slbooking')
-os.makedirs(LOG_DIR, exist_ok=True)
+# Production logging uses console/stdout handler.
+# Render captures all stdout/stderr in service logs.
+# No file-based logging in production (read-only filesystem on Render).
