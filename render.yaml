@@ -2,6 +2,7 @@ services:
   - type: web
     name: slbooking-api
     region: singapore
+    runtime: python-3.12.1
     autoDeploy: true
     envVars:
       - key: DEBUG
