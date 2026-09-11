@@ -23,7 +23,7 @@ python-decouple==3.8
 dj-database-url==2.1.0
 
 # Web Server
-gunicorn==22.0.0
+gunicorn==23.0.0
 
 # Async Tasks (Optional - if Celery is used)
 celery==5.4.0
