@@ -1,57 +1,368 @@
 """
-Production settings for SL Booking.
+Production settings for SL Booking - Phase 7 Deployment.
+
+Security, performance, monitoring, and resilience configured for production.
+This is an enterprise-grade configuration for the accommodation marketplace.
+
+Key Features:
+- HTTPS/TLS enforcement
+- Rate limiting (100 req/hr anonymous, 1000 req/hr authenticated)
+- Redis caching (sessions, search filters)
+- Sentry error tracking
+- Database connection pooling
+- Async task queue (Celery)
+- Secure cookie settings
+- CSP headers for XSS prevention
+- Gzip compression for responses
 """
 
-from .common import *
+import os
+from pathlib import Path
+from datetime import timedelta
+from decouple import config, Csv
+
+from .common import *  # noqa
+
+# ============================================================================
+# CRITICAL SECURITY SETTINGS
+# ============================================================================
 
 DEBUG = False
+
+# Secret key MUST be in environment
+SECRET_KEY = config('SECRET_KEY')
+if not SECRET_KEY or len(SECRET_KEY) < 50:
+    raise ValueError("SECRET_KEY must be set and at least 50 characters")
+
+# Allowed hosts - configure with your domains
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='slbooking.hotel.lk', cast=Csv())
 
-# Security settings
-SECURE_SSL_REDIRECT = True
+# Secure cookies - HTTPS only
 SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-SECURE_BROWSER_XSS_FILTER = True
-SECURE_CONTENT_SECURITY_POLICY = {
-    'default-src': ("'self'",),
-    'script-src': ("'self'", "'unsafe-inline'", "cdn.jsdelivr.net"),
-    'style-src': ("'self'", "'unsafe-inline'", "fonts.googleapis.com"),
-    'img-src': ("'self'", "data:", "https:", "https://res.cloudinary.com"),
-    'font-src': ("'self'", "fonts.gstatic.com"),
-    'connect-src': ("'self'", "*.slbooking.hotel.lk"),
-}
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
 
-# HSTS
+CSRF_COOKIE_SECURE = True
+CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SAMESITE = 'Lax'
+
+# HTTPS redirect
+SECURE_SSL_REDIRECT = True
+SECURE_REDIRECT_EXEMPT = [r'^health/', r'^status/']  # Health checks don't redirect
+
+# HSTS (HTTP Strict Transport Security)
 SECURE_HSTS_SECONDS = 31536000  # 1 year
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 
-# Sentry error tracking
-import sentry_sdk
-from sentry_sdk.integrations.django import DjangoIntegration
+# Clickjacking protection
+X_FRAME_OPTIONS = 'DENY'
 
-sentry_sdk.init(
-    dsn=config('SENTRY_DSN', default=''),
-    integrations=[DjangoIntegration()],
-    traces_sample_rate=0.1,
-    send_default_pii=False
-)
+# Browser XSS protection
+SECURE_BROWSER_XSS_FILTER = True
 
-# Database
-DATABASES['default']['CONN_MAX_AGE'] = 600
+# Content Security Policy (XSS prevention)
+SECURE_CONTENT_SECURITY_POLICY = {
+    'default-src': ("'self'",),
+    'script-src': ("'self'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"),
+    'style-src': ("'self'", "https://fonts.googleapis.com", "'unsafe-inline'"),
+    'font-src': ("'self'", "https://fonts.gstatic.com"),
+    'img-src': ("'self'", "data:", "https:", "https://res.cloudinary.com"),
+    'media-src': ("'self'", "https:",),
+    'connect-src': ("'self'", "https:", "wss:", "https://api.stripe.com"),
+    'object-src': ("'none'",),
+    'frame-ancestors': ("'none'",),
+    'base-uri': ("'self'",),
+}
 
-# Static files - WhiteNoise for serving static files
+# ============================================================================
+# DATABASE - POSTGRESQL WITH CONNECTION POOLING
+# ============================================================================
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': config('DB_NAME', default='slbooking'),
+        'USER': config('DB_USER', default='slbooking_user'),
+        'PASSWORD': config('DB_PASSWORD'),
+        'HOST': config('DB_HOST', default='localhost'),
+        'PORT': config('DB_PORT', default='5432', cast=int),
+        'CONN_MAX_AGE': 600,  # Connection pooling (10 min)
+        'OPTIONS': {
+            'connect_timeout': 10,
+            'options': '-c default_transaction_isolation=read_committed'
+        }
+    }
+}
+
+# ============================================================================
+# CACHING - REDIS FOR PERFORMANCE
+# ============================================================================
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/1'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'CONNECTION_POOL_KWARGS': {'max_connections': 50, 'retry_on_timeout': True},
+            'SOCKET_CONNECT_TIMEOUT': 5,
+            'SOCKET_TIMEOUT': 5,
+            'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
+        },
+        'KEY_PREFIX': 'slbooking',
+        'TIMEOUT': 300,  # 5 minutes default
+    }
+}
+
+# Session backend via Redis (faster than database)
+SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+SESSION_CACHE_ALIAS = 'default'
+
+# ============================================================================
+# EMAIL - SENDGRID FOR RELIABLE DELIVERY
+# ============================================================================
+
+EMAIL_BACKEND = 'sendgrid_backend.SendgridBackend'
+SENDGRID_API_KEY = config('SENDGRID_API_KEY', default='')
+
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@slbooking.hotel.lk')
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
+
+EMAIL_TIMEOUT = 10
+
+# ============================================================================
+# STATIC & MEDIA FILES
+# ============================================================================
+
+# Static files with WhiteNoise (serves from disk, gzipped)
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-# Email - use SendGrid or Gmail
-EMAIL_BACKEND = 'anymail.backends.sendgrid.EmailBackend'
+# Media files via Cloudinary (no local storage)
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': config('CLOUDINARY_CLOUD_NAME'),
+    'API_KEY': config('CLOUDINARY_API_KEY'),
+    'API_SECRET': config('CLOUDINARY_API_SECRET'),
+}
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+MEDIA_URL = '/media/'
 
-# CORS - whitelist specific domains
+# ============================================================================
+# COMPRESSION & PERFORMANCE
+# ============================================================================
+
+# Gzip compression for responses
+MIDDLEWARE.insert(0, 'django.middleware.gzip.GZipMiddleware')  # noqa
+
+# WhiteNoise middleware for static files
+MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')  # noqa
+
+# Template caching
+TEMPLATES[0]['OPTIONS']['loaders'] = [  # noqa
+    ('django.template.loaders.cached.Loader', [
+        'django.template.loaders.filesystem.Loader',
+        'django.template.loaders.app_directories.Loader',
+    ]),
+]
+
+# ============================================================================
+# LOGGING - SENTRY + LOCAL FILES
+# ============================================================================
+
+import sentry_sdk
+from sentry_sdk.integrations.django import DjangoIntegration
+from sentry_sdk.integrations.redis import RedisIntegration
+from sentry_sdk.integrations.celery import CeleryIntegration
+
+SENTRY_DSN = config('SENTRY_DSN', default='')
+
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[
+            DjangoIntegration(),
+            RedisIntegration(),
+            CeleryIntegration(),
+        ],
+        traces_sample_rate=0.1,  # 10% of transactions for performance monitoring
+        send_default_pii=False,  # Never send PII to Sentry
+        environment=config('ENVIRONMENT', default='production'),
+        release=config('RELEASE_VERSION', default='1.0.0'),
+    )
+
+# File-based logging with rotation
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': config('LOG_DIR', default='/var/log/slbooking') + '/django.log',
+            'maxBytes': 1024 * 1024 * 10,  # 10 MB
+            'backupCount': 10,
+            'formatter': 'verbose',
+        },
+        'error_file': {
+            'level': 'ERROR',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': config('LOG_DIR', default='/var/log/slbooking') + '/errors.log',
+            'maxBytes': 1024 * 1024 * 10,
+            'backupCount': 20,
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file', 'error_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers': ['error_file'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+        'apps': {
+            'handlers': ['file', 'error_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
+
+# ============================================================================
+# CELERY - ASYNC TASKS
+# ============================================================================
+
+CELERY_BROKER_URL = config('REDIS_URL', default='redis://127.0.0.1:6379/0')
+CELERY_RESULT_BACKEND = config('REDIS_URL', default='redis://127.0.0.1:6379/0')
+
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TIMEZONE = 'UTC'
+CELERY_ENABLE_UTC = True
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes hard limit
+CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # 25 minutes soft limit
+CELERY_RESULT_EXPIRES = 3600  # 1 hour
+
+# Task routing for different queue priorities
+CELERY_TASK_ROUTING = {
+    'apps.notifications.tasks.send_email': {'queue': 'email', 'routing_key': 'email'},
+    'apps.notifications.tasks.send_sms': {'queue': 'sms', 'routing_key': 'sms'},
+    'apps.payments.tasks.process_webhook': {'queue': 'payments', 'routing_key': 'payments'},
+}
+
+# ============================================================================
+# API RATE LIMITING - PREVENT ABUSE
+# ============================================================================
+
+REST_FRAMEWORK['DEFAULT_THROTTLE_CLASSES'] = [  # noqa
+    'rest_framework.throttling.AnonRateThrottle',
+    'rest_framework.throttling.UserRateThrottle',
+]
+
+REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'] = {  # noqa
+    'anon': '100/hour',          # 100 requests/hour for anonymous
+    'user': '1000/hour',         # 1000 requests/hour for authenticated
+    'booking': '10/hour',        # 10 bookings/hour per user
+    'payment': '50/hour',        # 50 payment attempts/hour
+    'search': '200/hour',        # 200 searches/hour
+}
+
+# ============================================================================
+# JWT AUTHENTICATION - PRODUCTION
+# ============================================================================
+
+SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'] = timedelta(hours=1)  # noqa
+SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'] = timedelta(days=7)  # noqa
+SIMPLE_JWT['ROTATE_REFRESH_TOKENS'] = True  # noqa
+SIMPLE_JWT['BLACKLIST_AFTER_ROTATION'] = True  # noqa
+SIMPLE_JWT['ALGORITHM'] = 'HS256'  # noqa
+SIMPLE_JWT['SIGNING_KEY'] = SECRET_KEY  # noqa
+
+# ============================================================================
+# PAYMENT GATEWAYS - PRODUCTION CREDENTIALS
+# ============================================================================
+
+STRIPE_LIVE_PUBLIC_KEY = config('STRIPE_LIVE_PUBLIC_KEY', default='')
+STRIPE_LIVE_SECRET_KEY = config('STRIPE_LIVE_SECRET_KEY', default='')
+STRIPE_WEBHOOK_SECRET = config('STRIPE_WEBHOOK_SECRET', default='')
+
+# ============================================================================
+# THIRD-PARTY SERVICES
+# ============================================================================
+
+# Twilio SMS
+TWILIO_ACCOUNT_SID = config('TWILIO_ACCOUNT_SID', default='')
+TWILIO_AUTH_TOKEN = config('TWILIO_AUTH_TOKEN', default='')
+TWILIO_PHONE_NUMBER = config('TWILIO_PHONE_NUMBER', default='')
+
+# Firebase Push Notifications
+FIREBASE_SERVICE_ACCOUNT = config('FIREBASE_SERVICE_ACCOUNT', default='')
+
+# ============================================================================
+# CORS - FRONTEND DOMAINS
+# ============================================================================
+
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
-    default='https://slbooking.hotel.lk',
+    default='https://slbooking.hotel.lk,https://www.slbooking.hotel.lk',
     cast=Csv()
 )
 
-# Logging - file-based
-LOGGING['handlers']['file']['filename'] = '/var/log/slbooking/django.log'
+CORS_ALLOW_CREDENTIALS = True
+
+# ============================================================================
+# SECURITY HEADERS
+# ============================================================================
+
+MIDDLEWARE.extend([  # noqa
+    'django.middleware.security.SecurityMiddleware',
+])
+
+# ============================================================================
+# DJANGO 4.2+ ASYNC SETTINGS
+# ============================================================================
+
+ASGI_TIMEOUT_KEEP_ALIVE = 20
+
+# ============================================================================
+# PERFORMANCE TESTING & MONITORING
+# ============================================================================
+
+# Disable SQL query logging in production
+LOGGING_SQL_QUERIES = False
+
+# Enable query result caching
+ENABLE_QUERY_CACHING = True
+
+# Cache search results for 30 minutes
+SEARCH_CACHE_TIMEOUT = 1800
+
+# ============================================================================
+# ENSURE LOG DIRECTORY EXISTS
+# ============================================================================
+
+import os
+LOG_DIR = config('LOG_DIR', default='/var/log/slbooking')
+os.makedirs(LOG_DIR, exist_ok=True)
