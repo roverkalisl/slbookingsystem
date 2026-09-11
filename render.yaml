@@ -4,9 +4,8 @@ services:
     env: python
     runtime: python-3.12.1
     region: singapore
-    rootDir: backend
-    buildCommand: pip install --upgrade pip setuptools wheel && pip install --no-cache-dir --only-binary=:all: -r requirements.txt && python manage.py check && python manage.py collectstatic --noinput --clear && python manage.py migrate
-    startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --access-logfile - --error-logfile -
+    buildCommand: pip install --upgrade pip setuptools wheel && pip install --no-cache-dir --only-binary=:all: -r backend/requirements.txt && cd backend && python manage.py check --settings=config.settings.production && python manage.py collectstatic --noinput --clear --settings=config.settings.production && python manage.py migrate --settings=config.settings.production
+    startCommand: cd backend && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --access-logfile - --error-logfile -
     autoDeploy: true
     envVars:
       - key: DEBUG
@@ -15,3 +14,5 @@ services:
         value: "slbooking-api.render.com"
       - key: PYTHONUNBUFFERED
         value: "1"
+      - key: DB_ENGINE
+        value: "django.db.backends.postgresql"
