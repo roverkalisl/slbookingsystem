@@ -192,12 +192,8 @@ MIDDLEWARE.insert(0, 'django.middleware.gzip.GZipMiddleware')  # noqa
 MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')  # noqa
 
 # Template caching
-TEMPLATES[0]['OPTIONS']['loaders'] = [  # noqa
-    ('django.template.loaders.cached.Loader', [
-        'django.template.loaders.filesystem.Loader',
-        'django.template.loaders.app_directories.Loader',
-    ]),
-]
+# APP_DIRS: True in common.py handles template discovery
+# Custom loaders removed to prevent conflict with APP_DIRS
 
 # ============================================================================
 # LOGGING - SENTRY + LOCAL FILES
