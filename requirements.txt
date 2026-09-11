@@ -1,3 +1,0 @@
-# SL Booking - Root Requirements (includes backend)
-# This file ensures Render can find dependencies
--r backend/requirements.txt
