@@ -25,9 +25,10 @@ dj-database-url==2.1.0
 # Web Server
 gunicorn==23.0.0
 
-# Async Tasks (Optional - if Celery is used)
+# Async Tasks & Caching (Celery + Redis)
 celery==5.4.0
 redis==5.1.0
+django-redis==5.4.0
 
 # Monitoring (Optional - if Sentry is used)
 sentry-sdk==2.0.0
