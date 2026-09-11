@@ -8,8 +8,8 @@ from decimal import Decimal
 from django.db.models import Q, Avg, Count, DecimalField
 from django.db.models.functions import Coalesce
 
-from .models import Property, RoomType, Availability, Amenity
-from apps.bookings.models import Booking
+from .models import Property, RoomType, Amenity
+from apps.bookings.models import Booking, Availability
 
 
 class PropertySearchService:

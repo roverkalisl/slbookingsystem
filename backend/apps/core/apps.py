@@ -13,8 +13,20 @@ class CoreConfig(AppConfig):
     def ready(self):
         """
         Initialize app - create default roles and settings.
+        Wrapped in try-except to handle migration phase.
         """
         from .models import Role, SystemSetting
+        from django.core.management import execute_from_command_line
+        from django.db import connection
+        from django.db.utils import OperationalError
+
+        try:
+            # Check if roles table exists
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1 FROM roles LIMIT 1;")
+        except OperationalError:
+            # Table doesn't exist yet - migrations not run
+            return
 
         # Create default roles if they don't exist
         role_data = [

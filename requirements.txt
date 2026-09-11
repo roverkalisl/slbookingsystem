@@ -5,13 +5,13 @@ django-cors-headers==4.3.1
 django-filter==23.4
 
 # Authentication & Security
-djangorestframework-simplejwt==5.3.2
+djangorestframework-simplejwt==5.5.1
 python-decouple==3.8
 Werkzeug==3.0.1
 
 # Database
-psycopg2-binary==2.9.9
-django-postgres==2.6.0
+# psycopg2-binary==2.9.9  # Only needed for PostgreSQL
+# django-postgres==2.6.0  # Only needed for PostgreSQL
 
 # Image & Media
 Pillow==10.1.0

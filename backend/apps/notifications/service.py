@@ -6,9 +6,10 @@ Supports: Email, SMS, Push notifications, In-app messages
 
 from abc import ABC, abstractmethod
 from typing import Dict, List
-from django.core.mail import send_html_email
+from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.urls import reverse
+from django.conf import settings
 
 from .models import Notification
 from apps.bookings.models import Booking
@@ -49,11 +50,12 @@ class EmailChannel(NotificationChannel):
             Dict with send result
         """
         try:
-            send_html_email(
+            send_mail(
                 subject=subject,
                 message=message,
-                from_email='noreply@slbooking.hotel.lk',
-                recipient_list=[recipient]
+                from_email=settings.DEFAULT_FROM_EMAIL or 'noreply@slbooking.hotel.lk',
+                recipient_list=[recipient],
+                html_message=message
             )
             return {
                 'success': True,
