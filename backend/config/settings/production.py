@@ -311,7 +311,6 @@ REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'] = {  # noqa
 
 # Disable format suffix patterns to prevent converter registration conflicts
 REST_FRAMEWORK['FORMAT_SUFFIX_PATTERNS'] = False  # noqa
-}
 
 # ============================================================================
 # JWT AUTHENTICATION - PRODUCTION
