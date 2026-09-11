@@ -9,7 +9,7 @@ pip install --upgrade pip setuptools wheel
 
 # Step 2: Install dependencies with BINARY wheels ONLY (no compilation)
 echo "==> Installing production dependencies (binary wheels only)..."
-pip install --no-cache-dir --only-binary=:all: -r requirements.txt
+pip install --no-cache-dir --only-binary=:all: -r ./requirements.txt
 
 # Step 3: Verify Django configuration
 echo "==> Verifying Django configuration..."
