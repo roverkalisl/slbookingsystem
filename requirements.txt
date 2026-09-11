@@ -1,3 +1,37 @@
-# SL Booking - Root Requirements (wrapper to backend)
-# Ensures Render can find dependencies from repository root
--r backend/requirements.txt
+# ============================================
+# SL Booking - Production Requirements
+# Python 3.12 - VERIFIED VERSIONS ONLY
+# Expanded from backend/requirements.txt for Render
+# ============================================
+
+# Django Framework & REST API
+Django==5.0.1
+djangorestframework==3.14.0
+djangorestframework-simplejwt==5.5.1
+django-cors-headers==4.3.1
+django-filter==24.1
+drf-spectacular==0.27.1
+
+# Database
+psycopg2-binary==2.9.10
+
+# Static Files & Media
+whitenoise==6.7.0
+Pillow==11.3.0
+
+# Configuration
+python-decouple==3.8
+dj-database-url==2.1.0
+
+# Web Server
+gunicorn==23.0.0
+
+# Async Tasks (Optional - if Celery is used)
+celery==5.4.0
+redis==5.1.0
+
+# Monitoring (Optional - if Sentry is used)
+sentry-sdk==2.0.0
+
+# HTTP Requests
+requests==2.32.3
