@@ -1,7 +1,6 @@
 # ============================================
-# SL Booking - Production Requirements
-# Python 3.12 - VERIFIED VERSIONS ONLY
-# Expanded from backend/requirements.txt for Render
+# SL Booking - Production Requirements ONLY
+# For Render and production deployments
 # ============================================
 
 # Django Framework & REST API
@@ -26,12 +25,14 @@ dj-database-url==2.1.0
 # Web Server
 gunicorn==23.0.0
 
-# Async Tasks (Optional - if Celery is used)
+# Async Tasks
 celery==5.4.0
 redis==5.1.0
 
-# Monitoring (Optional - if Sentry is used)
+# Monitoring
 sentry-sdk==2.0.0
 
 # HTTP Requests
 requests==2.32.3
+
+# For development, use: pip install -r requirements-dev.txt

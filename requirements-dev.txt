@@ -1,0 +1,20 @@
+# ============================================
+# SL Booking - Development Requirements ONLY
+# Do NOT install in production (Render)
+# ============================================
+
+# Base production requirements
+-r requirements.txt
+
+# Development/Testing Tools
+pytest==8.1.1
+pytest-django==4.7.0
+factory-boy==3.3.0
+
+# Debugging & Development
+django-debug-toolbar==4.3.0
+
+# Code Quality
+black==24.1.1
+flake8==7.1.1
+isort==5.13.2
