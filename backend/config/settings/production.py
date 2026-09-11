@@ -20,6 +20,7 @@ import os
 from pathlib import Path
 from datetime import timedelta
 from decouple import config, Csv
+import dj_database_url
 
 from .common import *  # noqa
 
@@ -79,21 +80,40 @@ SECURE_CONTENT_SECURITY_POLICY = {
 # DATABASE - POSTGRESQL WITH CONNECTION POOLING
 # ============================================================================
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME', default='slbooking'),
-        'USER': config('DB_USER', default='slbooking_user'),
-        'PASSWORD': config('DB_PASSWORD'),
-        'HOST': config('DB_HOST', default='localhost'),
-        'PORT': config('DB_PORT', default='5432', cast=int),
-        'CONN_MAX_AGE': 600,  # Connection pooling (10 min)
-        'OPTIONS': {
-            'connect_timeout': 10,
-            'options': '-c default_transaction_isolation=read_committed'
+# Use Render's DATABASE_URL if available, otherwise fall back to individual variables
+DATABASE_URL = config('DATABASE_URL', default=None)
+
+if DATABASE_URL:
+    # Parse DATABASE_URL from Render PostgreSQL
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=DATABASE_URL,
+            conn_max_age=600,  # Connection pooling (10 min)
+            conn_health_checks=True,
+        )
+    }
+    # Add options after parsing
+    DATABASES['default']['OPTIONS'] = {
+        'connect_timeout': 10,
+        'options': '-c default_transaction_isolation=read_committed'
+    }
+else:
+    # Fallback to individual environment variables (for other deployments)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': config('DB_NAME', default='slbooking'),
+            'USER': config('DB_USER', default='slbooking_user'),
+            'PASSWORD': config('DB_PASSWORD'),
+            'HOST': config('DB_HOST', default='localhost'),
+            'PORT': config('DB_PORT', default='5432', cast=int),
+            'CONN_MAX_AGE': 600,
+            'OPTIONS': {
+                'connect_timeout': 10,
+                'options': '-c default_transaction_isolation=read_committed'
+            }
         }
     }
-}
 
 # ============================================================================
 # CACHING - REDIS FOR PERFORMANCE
