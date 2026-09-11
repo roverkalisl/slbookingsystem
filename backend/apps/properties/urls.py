@@ -3,7 +3,7 @@ URL routing for property endpoints.
 """
 
 from django.urls import path, include
-from rest_framework.routers import DefaultRouter
+from rest_framework.routers import SimpleRouter
 
 from .views import (
     PropertyTypeViewSet, AmenityViewSet, DestinationViewSet,
@@ -12,7 +12,7 @@ from .views import (
 
 app_name = 'properties'
 
-router = DefaultRouter()
+router = SimpleRouter()
 router.register(r'types', PropertyTypeViewSet, basename='property-type')
 router.register(r'amenities', AmenityViewSet, basename='amenity')
 router.register(r'destinations', DestinationViewSet, basename='destination')
