@@ -1,4 +1,9 @@
-# Core Django Framework (Python 3.12 Compatible)
+# ============================================
+# SL Booking - Production Requirements
+# Python 3.12.1 Compatible
+# ============================================
+
+# Core Django Framework
 Django==5.0.1
 djangorestframework==3.14.0
 djangorestframework-simplejwt==5.5.1
@@ -6,39 +11,45 @@ django-cors-headers==4.3.1
 django-filter==24.1
 drf-spectacular==0.27.1
 
-# Python utilities (Python 3.12 Compatible)
+# Python utilities
 python-decouple==3.8
 dj-database-url==2.1.0
 
-# Image handling (Python 3.12 Compatible - Critical Fix)
-Pillow>=11.3.0
+# Image handling (Pillow 11.3.0+ for Python 3.12)
+Pillow==11.3.0
 
-# Database
+# Database (PostgreSQL)
 psycopg2-binary==2.9.10
 
-# Web Server
+# Web Server & Static Files
 gunicorn==22.0.0
 whitenoise==6.7.0
 
-# Async Task Queue (Python 3.12 Compatible)
+# Async Task Queue
 celery==5.4.0
 redis==5.1.0
 
-# HTTP & API
+# HTTP & API Requests
 requests==2.32.3
 
-# Media Storage
-cloudinary==2.0.1
+# Media Storage (Cloudinary - Latest stable version)
+# Note: cloudinary==2.0.1 does not exist
+# Using latest available: 1.46.2
+cloudinary==1.46.2
 
-# Payment & Communication
+# Payment Processing
 stripe==12.0.0
+
+# SMS/Communication
 twilio==9.2.4
+
+# Email Service
 django-sendgrid-v5==1.9.1
 
 # Monitoring & Error Tracking
 sentry-sdk==2.0.0
 
-# Testing (Development only)
+# Testing (Development/CI only)
 pytest==8.1.1
 pytest-django==4.7.0
 factory-boy==3.3.0
