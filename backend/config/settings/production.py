@@ -309,6 +309,10 @@ REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'] = {  # noqa
     'search': '200/hour',        # 200 searches/hour
 }
 
+# Disable format suffix patterns to prevent converter registration conflicts
+REST_FRAMEWORK['FORMAT_SUFFIX_PATTERNS'] = False  # noqa
+}
+
 # ============================================================================
 # JWT AUTHENTICATION - PRODUCTION
 # ============================================================================
