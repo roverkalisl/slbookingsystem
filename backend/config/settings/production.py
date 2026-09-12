@@ -38,6 +38,22 @@ if not SECRET_KEY or len(SECRET_KEY) < 50:
 # Allowed hosts - configure with your domains
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='slbooking.hotel.lk', cast=Csv())
 
+# CSRF_TRUSTED_ORIGINS: required by Django 4+ for any cross-scheme/cross-port
+# POST (admin login, forms, DRF browsable API) to pass CSRF verification when
+# the app sits behind a reverse proxy like Render's edge. Must include scheme.
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default='https://slbooking-api.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk',
+    cast=Csv()
+)
+
+# Render (and most PaaS) terminate TLS at the edge and forward plain HTTP to
+# the app, setting X-Forwarded-Proto: https. Without telling Django to trust
+# that header, request.is_secure() is always False behind the proxy, and
+# SECURE_SSL_REDIRECT below causes an INFINITE REDIRECT LOOP (Django keeps
+# "redirecting to HTTPS" on a request that already arrived via HTTPS).
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 # Secure cookies - HTTPS only
 SESSION_COOKIE_SECURE = True
 SESSION_COOKIE_HTTPONLY = True
@@ -49,7 +65,7 @@ CSRF_COOKIE_SAMESITE = 'Lax'
 
 # HTTPS redirect
 SECURE_SSL_REDIRECT = True
-SECURE_REDIRECT_EXEMPT = [r'^health/', r'^status/']  # Health checks don't redirect
+SECURE_REDIRECT_EXEMPT = [r'^health/?$', r'^status/?$']  # Health checks don't redirect
 
 # HSTS (HTTP Strict Transport Security)
 SECURE_HSTS_SECONDS = 31536000  # 1 year

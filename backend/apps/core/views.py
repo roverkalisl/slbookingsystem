@@ -2,6 +2,10 @@
 Views for authentication and user management.
 """
 
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_GET
+
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -319,3 +323,18 @@ class AuthViewSet(viewsets.ViewSet):
             },
             status=status.HTTP_200_OK
         )
+
+
+@csrf_exempt
+@require_GET
+def health_check(request):
+    """
+    Lightweight liveness endpoint for Render's Health Check Path.
+
+    Deliberately does NOT touch the database, cache, or Redis - it only
+    confirms the Django process/WSGI app is up and able to serve a
+    response. No authentication required. Keeping this dependency-free
+    means a slow/unavailable DB or cache never makes Render think the
+    whole app is down and cycle the service.
+    """
+    return JsonResponse({'status': 'ok'}, status=200)

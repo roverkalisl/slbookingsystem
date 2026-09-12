@@ -8,7 +8,13 @@ from django.conf.urls.static import static
 from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+from apps.core.views import health_check
+
 urlpatterns = [
+    # Health check - lightweight, unauthenticated, no DB access.
+    # Configure this as Render's Health Check Path.
+    path('health/', health_check, name='health-check'),
+
     # Admin
     path('admin/', admin.site.urls),
 
