@@ -95,22 +95,21 @@ if DATABASE_URL:
     # Add options after parsing
     DATABASES['default']['OPTIONS'] = {
         'connect_timeout': 10,
-        'options': "-c default_transaction_isolation='read committed'"
     }
 else:
     # Fallback to individual environment variables (for other deployments)
+    # Note: Render uses DATABASE_URL, so this is for manual deployments only
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
             'NAME': config('DB_NAME', default='slbooking'),
             'USER': config('DB_USER', default='slbooking_user'),
-            'PASSWORD': config('DB_PASSWORD'),
+            'PASSWORD': config('DB_PASSWORD', default=''),  # Required in actual use, empty for testing
             'HOST': config('DB_HOST', default='localhost'),
             'PORT': config('DB_PORT', default='5432', cast=int),
             'CONN_MAX_AGE': 600,
             'OPTIONS': {
                 'connect_timeout': 10,
-                'options': "-c default_transaction_isolation='read committed'"
             }
         }
     }
