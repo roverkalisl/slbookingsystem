@@ -4,13 +4,6 @@ services:
     region: singapore
     runtime: python-3.12
     autoDeploy: true
-    buildCommand: >
-      pip install --upgrade pip &&
-      pip install -r requirements.txt &&
-      cd backend &&
-      python manage.py migrate --settings=config.settings.production --noinput &&
-      python manage.py collectstatic --noinput --clear --settings=config.settings.production
-    startCommand: cd backend && python -m gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --access-logfile - --error-logfile -
     envVars:
       - key: DEBUG
         value: "False"
