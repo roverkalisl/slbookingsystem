@@ -13,46 +13,44 @@ class CoreConfig(AppConfig):
     def ready(self):
         """
         Initialize app - create default roles and settings.
-        Wrapped in try-except to handle migration phase.
+        Skipped during migrations to prevent table access errors.
         """
+        import sys
         from .models import Role, SystemSetting
-        from django.core.management import execute_from_command_line
-        from django.db import connection
-        from django.db.utils import OperationalError, ProgrammingError
 
-        try:
-            # Check if roles table exists
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT 1 FROM roles LIMIT 1;")
-        except (OperationalError, ProgrammingError):
-            # Table doesn't exist yet - migrations not run
-            # OperationalError: DB connection issue
-            # ProgrammingError: Table doesn't exist (relation does not exist)
+        # Skip initialization during migrations
+        # This prevents trying to access tables that don't exist yet
+        if 'migrate' in sys.argv or 'makemigrations' in sys.argv:
             return
 
-        # Create default roles if they don't exist
-        role_data = [
-            ('super_admin', 'Super Administrator'),
-            ('property_owner', 'Property Owner'),
-            ('property_staff', 'Property Staff'),
-            ('guest', 'Guest'),
-        ]
+        try:
+            # Create default roles if they don't exist
+            role_data = [
+                ('super_admin', 'Super Administrator'),
+                ('property_owner', 'Property Owner'),
+                ('property_staff', 'Property Staff'),
+                ('guest', 'Guest'),
+            ]
 
-        for role_name, description in role_data:
-            Role.objects.get_or_create(
-                name=role_name,
-                defaults={'description': description}
-            )
+            for role_name, description in role_data:
+                Role.objects.get_or_create(
+                    name=role_name,
+                    defaults={'description': description}
+                )
 
-        # Create default system settings
-        default_settings = {
-            'DEFAULT_COMMISSION_PERCENTAGE': '7.0',
-            'DEFAULT_SERVICE_FEE_PERCENTAGE': '5.0',
-            'DEFAULT_TAX_PERCENTAGE': '10.0',
-        }
+            # Create default system settings
+            default_settings = {
+                'DEFAULT_COMMISSION_PERCENTAGE': '7.0',
+                'DEFAULT_SERVICE_FEE_PERCENTAGE': '5.0',
+                'DEFAULT_TAX_PERCENTAGE': '10.0',
+            }
 
-        for key, value in default_settings.items():
-            SystemSetting.objects.get_or_create(
-                setting_key=key,
-                defaults={'setting_value': value}
-            )
+            for key, value in default_settings.items():
+                SystemSetting.objects.get_or_create(
+                    setting_key=key,
+                    defaults={'setting_value': value}
+                )
+        except Exception:
+            # If anything fails (DB not ready, table doesn't exist, etc), just skip
+            # The migrations and management commands will handle initialization
+            pass
