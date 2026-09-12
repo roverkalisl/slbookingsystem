@@ -18,14 +18,16 @@ class CoreConfig(AppConfig):
         from .models import Role, SystemSetting
         from django.core.management import execute_from_command_line
         from django.db import connection
-        from django.db.utils import OperationalError
+        from django.db.utils import OperationalError, ProgrammingError
 
         try:
             # Check if roles table exists
             with connection.cursor() as cursor:
                 cursor.execute("SELECT 1 FROM roles LIMIT 1;")
-        except OperationalError:
+        except (OperationalError, ProgrammingError):
             # Table doesn't exist yet - migrations not run
+            # OperationalError: DB connection issue
+            # ProgrammingError: Table doesn't exist (relation does not exist)
             return
 
         # Create default roles if they don't exist
