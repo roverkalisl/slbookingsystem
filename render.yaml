@@ -2,7 +2,7 @@ services:
   - type: web
     name: slbooking-api
     region: singapore
-    runtime: python-3.12.1
+    runtime: python-3.12
     autoDeploy: true
     envVars:
       - key: DEBUG
@@ -11,5 +11,3 @@ services:
         value: "slbooking-api.render.com"
       - key: PYTHONUNBUFFERED
         value: "1"
-      - key: REDIS_URL
-        value: "redis://localhost:6379/1"
