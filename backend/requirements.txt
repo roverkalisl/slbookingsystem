@@ -4,8 +4,11 @@
 # ============================================
 
 # Django Framework & REST API
+# NOTE: djangorestframework must be >=3.16 for Django 6.x compatibility -
+# 3.14.0 imports `cc_delim_re` from django.utils.cache, which Django 6
+# removed, causing ImportError on every request (URLconf import failure).
 Django==6.0.0
-djangorestframework==3.14.0
+djangorestframework==3.18.1
 djangorestframework-simplejwt==5.5.1
 django-cors-headers==4.3.1
 django-filter==24.1
@@ -17,6 +20,8 @@ psycopg2-binary==2.9.10
 # Static Files & Media
 whitenoise==6.7.0
 Pillow==11.3.0
+cloudinary==1.41.0
+django-cloudinary-storage==0.3.0
 
 # Configuration
 python-decouple==3.8

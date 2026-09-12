@@ -115,28 +115,46 @@ else:
     }
 
 # ============================================================================
-# CACHING - REDIS FOR PERFORMANCE
+# CACHING - REDIS FOR PERFORMANCE (with safe fallback if Redis not provisioned)
 # ============================================================================
 
-CACHES = {
-    'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/1'),
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            'CONNECTION_POOL_KWARGS': {'max_connections': 50, 'retry_on_timeout': True},
-            'SOCKET_CONNECT_TIMEOUT': 5,
-            'SOCKET_TIMEOUT': 5,
-            'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
-        },
-        'KEY_PREFIX': 'slbooking',
-        'TIMEOUT': 300,  # 5 minutes default
-    }
-}
+# REDIS_URL is only set when a Redis service is attached on Render.
+# If it's absent, we MUST NOT default to a localhost URL that doesn't exist -
+# that would make every request needing cache/session (e.g. login) fail with
+# a connection error. Fall back to safe, dependency-free backends instead.
+REDIS_URL = config('REDIS_URL', default='')
 
-# Session backend via Redis (faster than database)
-SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
-SESSION_CACHE_ALIAS = 'default'
+if REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': REDIS_URL,
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+                'CONNECTION_POOL_KWARGS': {'max_connections': 50, 'retry_on_timeout': True},
+                'SOCKET_CONNECT_TIMEOUT': 5,
+                'SOCKET_TIMEOUT': 5,
+                'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
+            },
+            'KEY_PREFIX': 'slbooking',
+            'TIMEOUT': 300,  # 5 minutes default
+        }
+    }
+    # Session backend via Redis (faster than database)
+    SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+    SESSION_CACHE_ALIAS = 'default'
+else:
+    # No Redis provisioned - use safe fallbacks with zero external dependencies.
+    # Site remains fully functional (login, search, etc.); only loses the
+    # performance boost from Redis until a Redis service is attached.
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'slbooking-local-fallback-cache',
+        }
+    }
+    # Database-backed sessions - always available, no external service needed
+    SESSION_ENGINE = 'django.contrib.sessions.backends.db'
 
 # ============================================================================
 # EMAIL - SENDGRID FOR RELIABLE DELIVERY
@@ -160,18 +178,31 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Media files via Cloudinary (optional - defaults to local storage if not configured)
+# Preferred: a single CLOUDINARY_URL env var (cloudinary://key:secret@cloud_name),
+# which the cloudinary SDK parses automatically. Individual vars are still
+# supported as a fallback for compatibility.
+CLOUDINARY_URL_CONFIGURED = config('CLOUDINARY_URL', default='')
 CLOUDINARY_CLOUD_NAME = config('CLOUDINARY_CLOUD_NAME', default='')
 CLOUDINARY_API_KEY = config('CLOUDINARY_API_KEY', default='')
 CLOUDINARY_API_SECRET = config('CLOUDINARY_API_SECRET', default='')
 
-CLOUDINARY_STORAGE = {
-    'CLOUD_NAME': CLOUDINARY_CLOUD_NAME,
-    'API_KEY': CLOUDINARY_API_KEY,
-    'API_SECRET': CLOUDINARY_API_SECRET,
-}
+CLOUDINARY_CONFIGURED = bool(CLOUDINARY_URL_CONFIGURED or CLOUDINARY_CLOUD_NAME)
 
-# Use Cloudinary if configured, otherwise use local storage
-if CLOUDINARY_CLOUD_NAME:
+if CLOUDINARY_CONFIGURED:
+    # cloudinary_storage/cloudinary packages are only required (and only
+    # imported) when Cloudinary is actually configured - see requirements.txt
+    INSTALLED_APPS = INSTALLED_APPS + ['cloudinary_storage', 'cloudinary']  # noqa: F405
+
+    if CLOUDINARY_CLOUD_NAME:
+        # Explicit individual credentials take precedence if provided
+        CLOUDINARY_STORAGE = {
+            'CLOUD_NAME': CLOUDINARY_CLOUD_NAME,
+            'API_KEY': CLOUDINARY_API_KEY,
+            'API_SECRET': CLOUDINARY_API_SECRET,
+        }
+    # else: CLOUDINARY_URL is present in the environment and the cloudinary
+    # SDK reads it automatically - no CLOUDINARY_STORAGE dict needed.
+
     DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 else:
     # Fallback to local media storage (create media/ directory)
@@ -267,8 +298,8 @@ LOGGING = {
 # CELERY - ASYNC TASKS
 # ============================================================================
 
-CELERY_BROKER_URL = config('REDIS_URL', default='redis://127.0.0.1:6379/0')
-CELERY_RESULT_BACKEND = config('REDIS_URL', default='redis://127.0.0.1:6379/0')
+CELERY_BROKER_URL = REDIS_URL or 'redis://127.0.0.1:6379/0'
+CELERY_RESULT_BACKEND = REDIS_URL or 'redis://127.0.0.1:6379/0'
 
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -279,6 +310,13 @@ CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes hard limit
 CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # 25 minutes soft limit
 CELERY_RESULT_EXPIRES = 3600  # 1 hour
+
+# If no Redis is provisioned, there's no broker to talk to. Run tasks
+# synchronously (in-process) instead of trying to connect and failing -
+# notifications/webhooks still execute, just without async queuing.
+if not REDIS_URL:
+    CELERY_TASK_ALWAYS_EAGER = True
+    CELERY_TASK_EAGER_PROPAGATES = True
 
 # Task routing for different queue priorities
 CELERY_TASK_ROUTING = {
