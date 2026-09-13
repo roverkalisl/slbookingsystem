@@ -11,7 +11,7 @@ services:
     healthCheckPath: /health/
     envVars:
       - key: SECRET_KEY
-        value: "django-insecure-production-default-key-change-in-production-settings-override-with-secure-value"
+        generateValue: true
       - key: PYTHON_VERSION
         value: "3.12.0"
       - key: DEBUG
