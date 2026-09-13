@@ -19,10 +19,10 @@ services:
         value: "slbookingsystem.onrender.com,slbooking.hotel.lk,www.slbooking.hotel.lk"
       - key: CORS_ALLOWED_ORIGINS
         # Frontend origins that are allowed to call the API
-        value: "https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk"
+        value: "https://slbookingsystem-frontend-rs18.onrender.com,https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk"
       - key: CSRF_TRUSTED_ORIGINS
         # Backend + Frontend + custom domains for form submissions and AJAX
-        value: "https://slbookingsystem.onrender.com,https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk"
+        value: "https://slbookingsystem.onrender.com,https://slbookingsystem-frontend-rs18.onrender.com,https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk"
       - key: PYTHONUNBUFFERED
         value: "1"
 
