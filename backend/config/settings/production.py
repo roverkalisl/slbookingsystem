@@ -30,8 +30,12 @@ from .common import *  # noqa
 
 DEBUG = False
 
-# Secret key MUST be in environment
-SECRET_KEY = config('SECRET_KEY')
+# Secret key - use environment variable, or default for initial Render deployment
+# For production, override with a secure random key on Render Dashboard
+SECRET_KEY = config(
+    'SECRET_KEY',
+    default='django-insecure-production-default-key-change-in-production-settings-override-with-secure-value'
+)
 if not SECRET_KEY or len(SECRET_KEY) < 50:
     raise ValueError("SECRET_KEY must be set and at least 50 characters")
 

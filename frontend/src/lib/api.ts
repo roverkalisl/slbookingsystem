@@ -16,6 +16,9 @@ import type {
   Review,
 } from '@/types'
 
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || 'https://slbookingsystem.onrender.com/api'
+
 class ApiClient {
   private client: AxiosInstance
   private token: string | null = null
@@ -43,8 +46,7 @@ class ApiClient {
 
   constructor() {
     this.client = axios.create({
-      baseURL:
-        process.env.NEXT_PUBLIC_API_URL || 'https://slbookingsystem.onrender.com/api',
+      baseURL: API_BASE_URL,
       headers: {
         'Content-Type': 'application/json',
       },
