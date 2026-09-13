@@ -11,6 +11,9 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from apps.core.views import health_check
 
 urlpatterns = [
+    # API root - keep the backend URL useful when opened directly.
+    path('', health_check, name='api-root'),
+
     # Health check - lightweight, unauthenticated, no DB access.
     # Configure this as Render's Health Check Path.
     path('health/', health_check, name='health-check'),
