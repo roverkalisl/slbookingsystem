@@ -47,7 +47,7 @@ ALLOWED_HOSTS = config(
 # the app sits behind a reverse proxy like Render's edge. Must include scheme.
 CSRF_TRUSTED_ORIGINS = config(
     'CSRF_TRUSTED_ORIGINS',
-    default='https://slbookingsystem.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk',
+    default='https://slbookingsystem.onrender.com,https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk',
     cast=Csv()
 )
 
@@ -402,7 +402,7 @@ FIREBASE_SERVICE_ACCOUNT = config('FIREBASE_SERVICE_ACCOUNT', default='')
 
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
-    default='https://slbooking.hotel.lk,https://www.slbooking.hotel.lk',
+    default='https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk',
     cast=Csv()
 )
 
