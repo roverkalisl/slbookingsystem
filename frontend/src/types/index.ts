@@ -43,6 +43,7 @@ export interface Property {
   amenities: Amenity[]
   owner: User
   created_at: string
+  room_types?: RoomType[]
 }
 
 export interface PropertyType {

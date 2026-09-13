@@ -59,12 +59,12 @@ function PropertyContent() {
   // Calculate price when dates change
   useEffect(() => {
     async function calculatePrice() {
-      if (!property || !checkIn || !checkOut || !property.photos[0]) return
+      if (!property || !checkIn || !checkOut || !property.room_types?.[0]) return
 
       try {
         setCalculating(true)
         const price = await api.calculatePrice({
-          room_type_id: property.photos[0].id, // Use first room type as example
+          room_type_id: property.room_types[0].id,
           check_in: checkIn,
           check_out: checkOut,
           num_adults: guests,
@@ -95,7 +95,7 @@ function PropertyContent() {
     try {
       setBookingLoading(true)
       const booking = await api.createBooking({
-        room_type_id: property?.photos[0].id || '',
+        room_type_id: property?.room_types?.[0]?.id || '',
         check_in: checkIn,
         check_out: checkOut,
         num_adults: guests,

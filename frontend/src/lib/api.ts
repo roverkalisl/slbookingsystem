@@ -20,9 +20,31 @@ class ApiClient {
   private client: AxiosInstance
   private token: string | null = null
 
+  private normalizeProperty(raw: any): Property {
+    const photos = raw.photos || (raw.cover_photo_url ? [{ id: raw.id, url: raw.cover_photo_url }] : [])
+    return {
+      ...raw,
+      property_type: raw.property_type || {
+        id: raw.property_type_id || '',
+        name: raw.property_type_name || '',
+      },
+      rating: Number(raw.rating ?? raw.average_rating ?? 0),
+      review_count: Number(raw.review_count ?? raw.total_reviews ?? 0),
+      price_range_min: Number(raw.price_range_min ?? raw.min_price ?? 0),
+      price_range_max: Number(raw.price_range_max ?? raw.min_price ?? 0),
+      photos: photos.map((photo: any) => ({
+        ...photo,
+        url: photo.url || photo.cloudinary_url,
+      })),
+      amenities: raw.amenities || [],
+      room_types: raw.room_types || [],
+    }
+  }
+
   constructor() {
     this.client = axios.create({
-      baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api',
+      baseURL:
+        process.env.NEXT_PUBLIC_API_URL || 'https://slbookingsystem.onrender.com/api',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -108,8 +130,8 @@ class ApiClient {
   }
 
   async getCurrentUser(): Promise<User> {
-    const response = await this.client.get<User>('/auth/me/')
-    return response.data
+    const response = await this.client.get<any>('/auth/me/')
+    return response.data.data || response.data
   }
 
   async updateProfile(data: Partial<User>): Promise<User> {
@@ -122,22 +144,33 @@ class ApiClient {
     const params = new URLSearchParams()
 
     if (filters) {
-      if (filters.destination) params.append('destination', filters.destination)
+      if (filters.destination) params.append('city', filters.destination)
       if (filters.min_price) params.append('min_price', String(filters.min_price))
       if (filters.max_price) params.append('max_price', String(filters.max_price))
-      if (filters.property_type) params.append('type', filters.property_type)
-      if (filters.sort_by) params.append('sort_by', filters.sort_by)
+      if (filters.property_type) params.append('property_types', filters.property_type)
+      if (filters.check_in) params.append('check_in', filters.check_in)
+      if (filters.check_out) params.append('check_out', filters.check_out)
+      if (filters.guests) params.append('adults', String(filters.guests))
+      if (filters.sort_by) {
+        params.append('sort_by', filters.sort_by === 'price_asc' || filters.sort_by === 'price_desc' ? 'price' : filters.sort_by)
+        if (filters.sort_by === 'price_asc' || filters.sort_by === 'price_desc') {
+          params.append('sort_direction', filters.sort_by === 'price_asc' ? 'asc' : 'desc')
+        }
+      }
     }
 
-    const response = await this.client.get<PaginatedResponse<Property>>(
-      `/properties/?${params.toString()}`
+    const response = await this.client.get<PaginatedResponse<any>>(
+      `/properties/search/advanced/?${params.toString()}`
     )
-    return response.data
+    return {
+      ...response.data,
+      results: (response.data.results || []).map((property) => this.normalizeProperty(property)),
+    }
   }
 
   async getProperty(id: string): Promise<Property> {
-    const response = await this.client.get<Property>(`/properties/${id}/`)
-    return response.data
+    const response = await this.client.get<any>(`/properties/${id}/`)
+    return this.normalizeProperty(response.data.data || response.data)
   }
 
   async searchProperties(
@@ -146,38 +179,49 @@ class ApiClient {
     checkOut: string,
     guests: number
   ): Promise<Property[]> {
-    const response = await this.client.get<Property[]>(
-      `/properties/search/?destination=${destination}&check_in=${checkIn}&check_out=${checkOut}&guests=${guests}`
+    const response = await this.client.get<any>(
+      `/properties/search/advanced/?city=${encodeURIComponent(destination)}&check_in=${checkIn}&check_out=${checkOut}&adults=${guests}`
     )
-    return response.data
+    return (response.data.results || response.data.data || []).map((property: any) =>
+      this.normalizeProperty(property)
+    )
   }
 
   async getFeaturedProperties(): Promise<Property[]> {
-    const response = await this.client.get<Property[]>('/properties/featured/')
-    return response.data
+    const response = await this.client.get<any>('/properties/search/featured/')
+    return (response.data.data || response.data).map((property: any) =>
+      this.normalizeProperty(property)
+    )
   }
 
   // ===== Bookings =====
   async createBooking(data: {
-    room_type_id: string
+      room_type_id: string
     check_in: string
     check_out: string
     num_adults: number
     num_children: number
     special_requests?: string
   }): Promise<Booking> {
-    const response = await this.client.post<Booking>('/bookings/', data)
-    return response.data
+    const response = await this.client.post<any>('/bookings/', {
+      room_type_id: data.room_type_id,
+      check_in_date: data.check_in,
+      check_out_date: data.check_out,
+      number_of_adults: data.num_adults,
+      number_of_children: data.num_children,
+      special_requests: data.special_requests,
+    })
+    return response.data.data || response.data
   }
 
   async getBookings(): Promise<Booking[]> {
-    const response = await this.client.get<Booking[]>('/bookings/')
-    return response.data
+    const response = await this.client.get<any>('/bookings/')
+    return response.data.results || response.data.data || response.data
   }
 
   async getBooking(id: string): Promise<Booking> {
-    const response = await this.client.get<Booking>(`/bookings/${id}/`)
-    return response.data
+    const response = await this.client.get<any>(`/bookings/${id}/`)
+    return response.data.data || response.data
   }
 
   async cancelBooking(id: string): Promise<void> {
@@ -191,8 +235,14 @@ class ApiClient {
     num_adults: number
     num_children?: number
   }): Promise<BookingPrice> {
-    const response = await this.client.post<BookingPrice>('/bookings/calculate-price/', data)
-    return response.data
+    const response = await this.client.post<any>('/bookings/calculate-price/', {
+      room_type_id: data.room_type_id,
+      check_in_date: data.check_in,
+      check_out_date: data.check_out,
+      number_of_adults: data.num_adults,
+      number_of_children: data.num_children || 0,
+    })
+    return response.data.data || response.data
   }
 
   async checkAvailability(
@@ -200,10 +250,16 @@ class ApiClient {
     checkIn: string,
     checkOut: string
   ): Promise<{ available: boolean; available_count: number }> {
-    const response = await this.client.get<{ available: boolean; available_count: number }>(
-      `/bookings/check-availability/?room_type_id=${roomTypeId}&check_in=${checkIn}&check_out=${checkOut}`
-    )
-    return response.data
+    const response = await this.client.post<any>('/bookings/check-availability/', {
+      room_type_id: roomTypeId,
+      check_in_date: checkIn,
+      check_out_date: checkOut,
+    })
+    const data = response.data.data || response.data
+    return {
+      available: data.is_available,
+      available_count: data.available_count,
+    }
   }
 
   // ===== Payments =====
