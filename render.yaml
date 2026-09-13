@@ -7,15 +7,30 @@ services:
     autoDeploy: true
     buildCommand: python -m pip install -r requirements.txt && python manage.py collectstatic --noinput
     preDeployCommand: python manage.py migrate --noinput
-    startCommand: /opt/render/project/src/.venv/bin/python -m gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --access-logfile - --error-logfile -
+    startCommand: /opt/render/project/src/.venv/bin/gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --access-logfile - --error-logfile -
+    healthCheckPath: /health/
     envVars:
       - key: DEBUG
         value: "False"
       - key: ALLOWED_HOSTS
-        # Render web services are served from <service-name>.onrender.com,
-        # NOT .render.com - that was rejecting every real request with
-        # Django's DisallowedHost 400 error. Includes both the Render
-        # subdomain and the eventual custom domain from CLAUDE.md.
-        value: "slbooking-api.onrender.com,slbooking.hotel.lk,www.slbooking.hotel.lk"
+        # Include the actual Render service hostname and the custom domains.
+        value: "slbookingsystem.onrender.com,slbooking.hotel.lk,www.slbooking.hotel.lk"
+      - key: CORS_ALLOWED_ORIGINS
+        value: "https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk"
+      - key: CSRF_TRUSTED_ORIGINS
+        value: "https://slbookingsystem.onrender.com,https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk"
       - key: PYTHONUNBUFFERED
         value: "1"
+
+  - type: web
+    name: slbookingsystem-frontend
+    region: singapore
+    runtime: node
+    rootDir: frontend
+    autoDeploy: true
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        value: "https://slbooking-api.onrender.com/api"
