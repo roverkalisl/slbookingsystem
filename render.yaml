@@ -13,12 +13,14 @@ services:
       - key: DEBUG
         value: "False"
       - key: ALLOWED_HOSTS
-        # Include the actual Render service hostname and the custom domains.
-        value: "slbookingsystem.onrender.com,slbooking.hotel.lk,www.slbooking.hotel.lk"
+        # Backend API only - serve at the API service domain and custom hotel.lk domain
+        value: "slbooking-api.onrender.com,api.slbooking.hotel.lk"
       - key: CORS_ALLOWED_ORIGINS
+        # Frontend origins that are allowed to call the API
         value: "https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk"
       - key: CSRF_TRUSTED_ORIGINS
-        value: "https://slbookingsystem.onrender.com,https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk"
+        # Same as CORS_ALLOWED_ORIGINS (frontend can POST to API)
+        value: "https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk"
       - key: PYTHONUNBUFFERED
         value: "1"
 
@@ -34,3 +36,5 @@ services:
     envVars:
       - key: NEXT_PUBLIC_API_URL
         value: "https://slbooking-api.onrender.com/api"
+      - key: NEXT_PUBLIC_SITE_URL
+        value: "https://slbookingsystem-frontend.onrender.com"
