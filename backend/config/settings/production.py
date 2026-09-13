@@ -36,14 +36,18 @@ if not SECRET_KEY or len(SECRET_KEY) < 50:
     raise ValueError("SECRET_KEY must be set and at least 50 characters")
 
 # Allowed hosts - configure with your domains
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='slbooking.hotel.lk', cast=Csv())
+ALLOWED_HOSTS = config(
+    'ALLOWED_HOSTS',
+    default='slbookingsystem.onrender.com,slbooking.hotel.lk,www.slbooking.hotel.lk',
+    cast=Csv(),
+)
 
 # CSRF_TRUSTED_ORIGINS: required by Django 4+ for any cross-scheme/cross-port
 # POST (admin login, forms, DRF browsable API) to pass CSRF verification when
 # the app sits behind a reverse proxy like Render's edge. Must include scheme.
 CSRF_TRUSTED_ORIGINS = config(
     'CSRF_TRUSTED_ORIGINS',
-    default='https://slbooking-api.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk',
+    default='https://slbookingsystem.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk',
     cast=Csv()
 )
 
