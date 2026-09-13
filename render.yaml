@@ -44,3 +44,9 @@ services:
         value: "https://slbookingsystem.onrender.com/api"
       - key: NEXT_PUBLIC_SITE_URL
         value: "https://slbookingsystem-frontend.onrender.com"
+
+  - type: pgsql
+    name: slbookingsystem-db
+    region: singapore
+    version: 14
+    plan: starter
