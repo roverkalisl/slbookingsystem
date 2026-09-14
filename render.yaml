@@ -10,6 +10,8 @@ services:
     startCommand: /opt/render/project/src/.venv/bin/gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --access-logfile - --error-logfile -
     healthCheckPath: /health/
     envVars:
+      - key: DATABASE_URL
+        value: postgresql://slbooking_rpuz_user:Vj3nnXs9E7jmzktW20dIxtxTRD53jfuq@dpg-dai609uq1p3s73bg6jl0-a/slbooking_rpuz
       - key: SECRET_KEY
         generateValue: true
       - key: PYTHON_VERSION
@@ -44,9 +46,3 @@ services:
         value: "https://slbookingsystem.onrender.com/api"
       - key: NEXT_PUBLIC_SITE_URL
         value: "https://slbookingsystem-frontend.onrender.com"
-
-  - type: pgsql
-    name: slbookingsystem-db
-    region: singapore
-    version: 14
-    plan: starter
