@@ -11,13 +11,13 @@ services:
     rootDir: backend
     autoDeploy: true
 
-    # Build: Install Node deps → Build Next.js → Install Python deps → Collect static
+    # Build: Install Node deps → Build Next.js (static export) → Install Python deps → Collect static
     buildCommand: |
       cd /opt/render/project/src/frontend && npm install && npm run build &&
       cd /opt/render/project/src/backend &&
       python -m pip install -r requirements.txt &&
       python manage.py collectstatic --noinput --clear &&
-      cp -r /opt/render/project/src/frontend/.next/static/* /opt/render/project/src/backend/staticfiles/
+      cp -r /opt/render/project/src/frontend/out/* /opt/render/project/src/backend/staticfiles/
 
     # Pre-deploy: Run migrations
     preDeployCommand: python manage.py migrate --noinput --settings=config.settings.production

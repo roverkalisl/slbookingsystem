@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Static export for single-service deployment (Django serves static HTML)
+  output: 'export',
+
   reactStrictMode: true,
   swcMinify: true,
   images: {
@@ -10,6 +13,8 @@ const nextConfig = {
         pathname: '/**',
       },
     ],
+    // Unoptimized required for static export
+    unoptimized: true,
   },
   env: {
     NEXT_PUBLIC_API_URL:
