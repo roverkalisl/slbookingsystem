@@ -12,7 +12,16 @@ services:
     autoDeploy: true
 
     # Build: Install Node.js → Frontend build → Django setup → Merge static files
-    buildCommand: "apt-get update && apt-get install -y nodejs npm && cd frontend && npm install && npm run build && cd ../backend && python -m pip install -r requirements.txt && python manage.py collectstatic --noinput --clear && cp -r ../frontend/out/* staticfiles/ 2>/dev/null || true"
+    buildCommand: |-
+      apt-get update && \
+      apt-get install -y nodejs npm && \
+      cd frontend && \
+      npm install && \
+      npm run build && \
+      cd ../backend && \
+      python -m pip install -r requirements.txt && \
+      python manage.py collectstatic --noinput --clear && \
+      cp -r ../frontend/out/* staticfiles/ 2>/dev/null || true
 
     # Pre-deploy: Run migrations
     preDeployCommand: python manage.py migrate --noinput --settings=config.settings.production
