@@ -44,9 +44,10 @@ if not settings.DEBUG:
 
     def serve_frontend(request, path=''):
         """Serve Next.js frontend index.html for client-side routing"""
-        # Never serve frontend for API or admin routes - let Django handle them
-        # Handle both /api and /api/ patterns
-        if path in ('api',) or path.startswith('api/') or path.startswith('admin/'):
+        # Never serve frontend for static files, API, or admin routes - let Django/WhiteNoise handle them
+        # Static files must be served by WhiteNoise, not by this view
+        # Handle both /api and /api/ patterns, and /static/ paths
+        if path.startswith('static/') or path in ('api',) or path.startswith('api/') or path.startswith('admin/'):
             return HttpResponse('Not found', status=404)
 
         try:
