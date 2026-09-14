@@ -16,9 +16,6 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from apps.core.views import health_check
 
 urlpatterns = [
-    # API root - keep the backend URL useful when opened directly.
-    path('', health_check, name='api-root'),
-
     # Health check - lightweight, unauthenticated, no DB access.
     # Configure this as Render's Health Check Path.
     path('health/', health_check, name='health-check'),
@@ -47,7 +44,8 @@ if not settings.DEBUG:
     def serve_frontend(request, path=''):
         """Serve Next.js frontend index.html for client-side routing"""
         # Never serve frontend for API or admin routes - let Django handle them
-        if path.startswith('api/') or path.startswith('admin/'):
+        # Handle both /api and /api/ patterns
+        if path in ('api',) or path.startswith('api/') or path.startswith('admin/'):
             return HttpResponse('Not found', status=404)
 
         try:
@@ -60,7 +58,8 @@ if not settings.DEBUG:
     # Catch-all: Serve index.html for client-side routing
     # This must be LAST in urlpatterns so API routes match first
     urlpatterns += [
-        path('<path:path>', serve_frontend),
+        path('', serve_frontend, name='frontend-root'),  # Match / explicitly
+        path('<path:path>', serve_frontend),  # Match everything else
     ]
 
 # Serve media files in development

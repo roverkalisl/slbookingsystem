@@ -12,7 +12,7 @@ services:
     autoDeploy: true
 
     # Build: Frontend (npm) → Backend (pip) → Merge static files
-    buildCommand: "cd frontend && npm install && npm run build && cd ../backend && python -m pip install -r requirements.txt && python manage.py collectstatic --noinput --clear && cp -r ../frontend/out/* staticfiles/"
+    buildCommand: "cd frontend && npm install && echo '==> Running npm run build...' && npm run build && echo '==> Checking for out directory...' && ls -la out/ && echo '==> Verifying index.html...' && ls -la out/index.html && cd ../backend && echo '==> Installing Python dependencies...' && python -m pip install -r requirements.txt && echo '==> Collecting Django static files...' && python manage.py collectstatic --noinput --clear && echo '==> Copying Next.js output to staticfiles...' && cp -r ../frontend/out/* staticfiles/ && echo '==> Verifying copy success...' && ls -la staticfiles/index.html && echo '==> Build complete'"
 
     # Pre-deploy: Run migrations
     preDeployCommand: python manage.py migrate --noinput --settings=config.settings.production
