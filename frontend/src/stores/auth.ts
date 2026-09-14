@@ -23,25 +23,36 @@ interface AuthStore {
   }) => Promise<void>
   logout: () => Promise<void>
   fetchUser: () => Promise<void>
+  initializeAuth: () => Promise<void>
   clearError: () => void
 }
 
 export const useAuth = create<AuthStore>((set) => ({
   user: null,
-  isLoading: false,
+  isLoading: true,
   error: null,
   isAuthenticated: false,
 
   login: async (email: string, password: string) => {
+    console.log('[AUTH STORE] login() called - email exists:', !!email)
     try {
       set({ isLoading: true, error: null })
+      console.log('[AUTH STORE] Calling api.login()...')
       const response = await api.login(email, password)
+      console.log('[AUTH STORE] api.login() succeeded')
+      console.log('[AUTH STORE] Response has user:', !!response.user)
       set({
         user: response.user,
         isAuthenticated: true,
         isLoading: false,
       })
+      console.log('[AUTH STORE] Auth state updated - isAuthenticated=true')
     } catch (error: any) {
+      console.log('[AUTH STORE] login() caught error:', error instanceof Error ? error.message : String(error))
+      if (error.response) {
+        console.log('[AUTH STORE] HTTP Status:', error.response.status)
+        console.log('[AUTH STORE] Response data keys:', Object.keys(error.response.data || {}))
+      }
       let errorMessage = 'Login failed'
 
       // Handle different error response formats
@@ -64,6 +75,7 @@ export const useAuth = create<AuthStore>((set) => ({
         errorMessage = error.message
       }
 
+      console.log('[AUTH STORE] Setting error message:', errorMessage)
       set({
         error: errorMessage,
         isLoading: false,
@@ -142,6 +154,15 @@ export const useAuth = create<AuthStore>((set) => ({
         isLoading: false,
       })
     }
+  },
+
+  initializeAuth: async () => {
+    if (typeof window === 'undefined' || !localStorage.getItem('access_token')) {
+      set({ isLoading: false })
+      return
+    }
+
+    await useAuth.getState().fetchUser()
   },
 
   clearError: () => set({ error: null }),
