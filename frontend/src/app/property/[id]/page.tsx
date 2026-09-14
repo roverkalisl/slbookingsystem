@@ -349,3 +349,9 @@ export default function PropertyPage() {
     </Suspense>
   )
 }
+
+// Required for static export: no pre-generated property pages
+// Property data loads client-side from API at runtime
+export async function generateStaticParams() {
+  return []
+}
