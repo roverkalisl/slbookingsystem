@@ -1,81 +1,67 @@
+# SINGLE-SERVICE DEPLOYMENT
+# Django backend + Next.js frontend (Python runtime)
+# Frontend built to static files, served by Django/WhiteNoise
+# Database: Existing PostgreSQL in Oregon via fromDatabase
+
 services:
   - type: web
     name: slbookingsystem
-    region: singapore
-    runtime: python
-    rootDir: backend
-    autoDeploy: true
-    buildCommand: python -m pip install -r requirements.txt && python manage.py collectstatic --noinput
-    preDeployCommand: python manage.py migrate --noinput
-    startCommand: /opt/render/project/src/.venv/bin/gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --access-logfile - --error-logfile -
-    healthCheckPath: /health/
-    envVars:
-      - key: DJANGO_SETTINGS_MODULE
-        value: "config.settings.production"
-      - key: SECRET_KEY
-        generateValue: true
-      - key: PYTHON_VERSION
-        value: "3.12.0"
-      - key: DEBUG
-        value: "False"
-      - key: ALLOWED_HOSTS
-        # Backend service deployed as slbookingsystem
-        value: "slbookingsystem.onrender.com,slbooking.hotel.lk,www.slbooking.hotel.lk"
-      - key: CORS_ALLOWED_ORIGINS
-        # Frontend origins that are allowed to call the API
-        value: "https://slbookingsystem-frontend-rs18.onrender.com,https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk"
-      - key: CSRF_TRUSTED_ORIGINS
-        # Backend + Frontend + custom domains for form submissions and AJAX
-        value: "https://slbookingsystem.onrender.com,https://slbookingsystem-frontend-rs18.onrender.com,https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk"
-      - key: PYTHONUNBUFFERED
-        value: "1"
-
-  # NEW BACKEND (Oregon) - Same region as PostgreSQL database
-  - type: web
-    name: slbookingsystem-backend-oregon
     region: oregon
     runtime: python
     rootDir: backend
     autoDeploy: true
-    buildCommand: python -m pip install -r requirements.txt && python manage.py collectstatic --noinput
-    preDeployCommand: python manage.py migrate --noinput
+
+    # Build: Install Node deps → Build Next.js → Install Python deps → Collect static
+    buildCommand: |
+      cd /opt/render/project/src/frontend && npm install && npm run build &&
+      cd /opt/render/project/src/backend &&
+      python -m pip install -r requirements.txt &&
+      python manage.py collectstatic --noinput --clear &&
+      cp -r /opt/render/project/src/frontend/.next/static/* /opt/render/project/src/backend/staticfiles/
+
+    # Pre-deploy: Run migrations
+    preDeployCommand: python manage.py migrate --noinput --settings=config.settings.production
+
+    # Start: Gunicorn only (serves both API and static frontend)
     startCommand: /opt/render/project/src/.venv/bin/gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --access-logfile - --error-logfile -
+
     healthCheckPath: /health/
+
     envVars:
       - key: DJANGO_SETTINGS_MODULE
         value: "config.settings.production"
+
       - key: DATABASE_URL
         fromDatabase:
           name: slbooking
           property: connectionString
+
       - key: SECRET_KEY
         generateValue: true
+
       - key: PYTHON_VERSION
         value: "3.12.0"
+
+      - key: NODE_VERSION
+        value: "20.11.1"
+
       - key: DEBUG
         value: "False"
+
       - key: ALLOWED_HOSTS
-        value: "slbookingsystem-backend-oregon.onrender.com,slbooking.hotel.lk,www.slbooking.hotel.lk"
+        value: "slbookingsystem.onrender.com,slbooking.hotel.lk,www.slbooking.hotel.lk"
+
       - key: CORS_ALLOWED_ORIGINS
-        value: "https://slbookingsystem-frontend-rs18.onrender.com,https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk"
+        value: "https://slbookingsystem.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk"
+
       - key: CSRF_TRUSTED_ORIGINS
-        value: "https://slbookingsystem-backend-oregon.onrender.com,https://slbookingsystem-frontend-rs18.onrender.com,https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk"
+        value: "https://slbookingsystem.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk"
+
       - key: PYTHONUNBUFFERED
         value: "1"
 
-  - type: web
-    name: slbookingsystem-frontend
-    region: singapore
-    runtime: node
-    rootDir: frontend
-    autoDeploy: true
-    buildCommand: npm ci && npm run build
-    startCommand: npm start
-    healthCheckPath: /
-    envVars:
-      - key: NODE_VERSION
-        value: "20.11.1"
       - key: NEXT_PUBLIC_API_URL
         value: "https://slbookingsystem.onrender.com/api"
+
       - key: NEXT_PUBLIC_SITE_URL
-        value: "https://slbookingsystem-frontend.onrender.com"
+        value: "https://slbookingsystem.onrender.com"
