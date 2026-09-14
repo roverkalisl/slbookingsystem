@@ -58,15 +58,18 @@ echo "Frontend out path: $FRONTEND_OUT"
 echo "Staticfiles path: $STATICFILES"
 
 if [ -d "$FRONTEND_OUT" ]; then
-  echo "✓ Found frontend/out directory at: $FRONTEND_OUT"
+  echo "✓ Found frontend/out directory"
 
-  # List contents before copy
-  echo "Contents of $FRONTEND_OUT:"
-  ls -la "$FRONTEND_OUT" | head -20
+  # Copy ONLY index.html and _next/ directory
+  # Do NOT copy other HTML files (login.html, search.html, etc) because they break SPA client-side routing
+  # WhiteNoise serves static files before Django routing, so extra HTML files would be served directly
+  # instead of letting the SPA's client-side router handle the navigation.
 
-  echo "Copying files..."
-  # Use -v for verbose output to see each file being copied
-  cp -rv "$FRONTEND_OUT"/* "$STATICFILES/" 2>&1 | head -30
+  echo "Copying _next/ directory..."
+  cp -r "$FRONTEND_OUT/_next" "$STATICFILES/"
+
+  echo "Copying index.html..."
+  cp "$FRONTEND_OUT/index.html" "$STATICFILES/"
 
   echo "Verifying copy..."
   # Verify the copy worked
@@ -76,23 +79,24 @@ if [ -d "$FRONTEND_OUT" ]; then
     echo "✓ Found $FILE_COUNT files in _next/"
   else
     echo "✗ ERROR: _next/ directory not found after copy!"
-    echo "Listing $STATICFILES:"
-    ls -la "$STATICFILES/"
     exit 1
   fi
 
-  # Verify HTML files were copied
-  for html_file in index login register search bookings; do
-    if [ -f "$STATICFILES/${html_file}.html" ]; then
-      echo "✓ $html_file.html copied"
-    else
-      echo "✗ WARNING: $html_file.html not found"
-    fi
-  done
+  if [ -f "$STATICFILES/index.html" ]; then
+    echo "✓ Successfully copied index.html"
+  else
+    echo "✗ ERROR: index.html not found after copy!"
+    exit 1
+  fi
+
+  # Clean up: Remove other HTML files if they exist (they break SPA routing)
+  echo "Cleaning up extra HTML files (not needed for SPA)..."
+  rm -f "$STATICFILES"/{login,register,search,bookings,404}.html
+  rm -f "$STATICFILES"/{login,register,search,bookings}.txt
+  echo "✓ Removed static HTML files to preserve SPA client-side routing"
+
 else
   echo "✗ ERROR: frontend/out directory not found at: $FRONTEND_OUT"
-  echo "Available in parent directory:"
-  ls -la "$(cd .. && pwd)/frontend/" | head -20
   exit 1
 fi
 
