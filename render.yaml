@@ -12,8 +12,6 @@ services:
     envVars:
       - key: DJANGO_SETTINGS_MODULE
         value: "config.settings.production"
-      - key: DATABASE_URL
-        value: postgresql://slbooking_rpuz_user:Vj3nnXs9E7jmzktW20dIxtxTRD53jfuq@dpg-dai609uq1p3s73bg6jl0-a/slbooking_rpuz
       - key: SECRET_KEY
         generateValue: true
       - key: PYTHON_VERSION
