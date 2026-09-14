@@ -11,14 +11,16 @@ services:
     rootDir: backend
     autoDeploy: true
 
-    # Build: Install Node.js → Frontend build → Django setup → Merge static files
-    buildCommand: 'apt-get update && apt-get install -y nodejs npm && cd frontend && npm install && npm run build && cd ../backend && python -m pip install -r requirements.txt && python manage.py collectstatic --noinput --clear && cp -r ../frontend/out/* staticfiles/ 2>/dev/null || true'
+    # Build: Execute build.sh script
+    # build.sh: Install Node.js → Frontend build → Django setup → Merge static files
+    buildCommand: bash build.sh
 
     # Pre-deploy: Run migrations
-    preDeployCommand: python manage.py migrate --noinput --settings=config.settings.production
+    preDeployCommand: cd backend && python manage.py migrate --noinput --settings=config.settings.production
 
-    # Start: Gunicorn only (serves both API and static frontend)
-    startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --access-logfile - --error-logfile -
+    # Start: Execute start.sh script
+    # start.sh: Start Gunicorn (serves both API and static frontend)
+    startCommand: bash start.sh
 
     healthCheckPath: /health/
 
