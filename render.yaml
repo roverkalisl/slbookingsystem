@@ -12,8 +12,8 @@ services:
     autoDeploy: true
 
     # Build: Frontend (npm) → Backend (pip) → Merge static files
-    # Debugging: check at each step what files exist
-    buildCommand: "sh -c 'cd frontend && npm install && npm run build 2>&1; echo \"NPM_EXIT_CODE=$?\"; ls -la ./ | head -20; echo \"Checking for .next...\"; [ -d .next ] && echo \".next exists\" || echo \".next MISSING\"; echo \"Checking for out...\"; [ -d out ] && echo \"out exists\" && ls -la out/ | head -10 || echo \"out MISSING\"; cd ../backend && python -m pip install -r requirements.txt && python manage.py collectstatic --noinput --clear && echo \"Copying frontend build...\"; cp -r ../frontend/out/* staticfiles/ 2>&1 || echo \"Copy failed\"; echo \"Final check:\"; ls -la staticfiles/ | head -10'"
+    # Try to copy from out/ first (static export), fall back to .next if needed
+    buildCommand: "cd frontend && npm install && npm run build && cd ../backend && python -m pip install -r requirements.txt && python manage.py collectstatic --noinput --clear && (cp -r ../frontend/out/* staticfiles/ 2>/dev/null || cp -r ../frontend/.next/static/* staticfiles/ 2>/dev/null || echo 'Warning: No frontend build found')"
 
     # Pre-deploy: Run migrations
     preDeployCommand: python manage.py migrate --noinput --settings=config.settings.production
