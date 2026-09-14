@@ -3,6 +3,10 @@ const nextConfig = {
   // Static export for single-service deployment (Django serves static HTML)
   output: 'export',
 
+  // Serve Next.js assets from Django's /static/ path
+  // This makes /_next/static/* → /static/_next/static/*
+  assetPrefix: '/static',
+
   reactStrictMode: true,
   swcMinify: true,
   images: {

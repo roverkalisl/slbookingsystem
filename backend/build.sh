@@ -41,12 +41,42 @@ cd ../backend
 echo "Step 3: Installing Python dependencies..."
 python -m pip install -r requirements.txt
 
-# Step 4: Collect Django static files
+# Step 4: Collect Django static files (creates staticfiles directory)
 echo "Step 4: Collecting Django static files..."
 python manage.py collectstatic --noinput --clear
 
 # Step 5: Copy Next.js frontend build to Django static directory
 echo "Step 5: Copying Next.js frontend build to Django staticfiles..."
-cp -r ../frontend/out/* staticfiles/ 2>/dev/null || echo "Warning: No frontend build found at ../frontend/out/"
+if [ -d "../frontend/out" ]; then
+  echo "Found frontend/out directory, copying files..."
+  # Copy all files from frontend/out to staticfiles
+  # This includes: index.html, _next/, and other HTML files
+  cp -r ../frontend/out/* staticfiles/
+
+  # Verify the copy worked
+  if [ -d "staticfiles/_next" ]; then
+    echo "✓ Successfully copied _next/ directory"
+    # Count files to verify
+    FILE_COUNT=$(find staticfiles/_next -type f | wc -l)
+    echo "✓ Found $FILE_COUNT files in staticfiles/_next/"
+  else
+    echo "✗ ERROR: _next/ directory not found after copy!"
+    echo "Listing frontend/out contents:"
+    ls -la ../frontend/out/
+    exit 1
+  fi
+
+  # Verify index.html was copied
+  if [ -f "staticfiles/index.html" ]; then
+    echo "✓ Successfully copied index.html"
+  else
+    echo "✗ WARNING: index.html not found in staticfiles/"
+  fi
+else
+  echo "✗ ERROR: ../frontend/out directory not found!"
+  echo "Available frontend directories:"
+  ls -la ../frontend/ | grep -E "^d"
+  exit 1
+fi
 
 echo "=== Build Complete ==="
