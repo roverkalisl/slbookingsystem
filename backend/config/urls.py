@@ -10,12 +10,38 @@ import os
 from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import HttpResponse
 from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from apps.core.views import health_check
 
+def debug_staticfiles(request):
+    """DEBUG ENDPOINT: Show what's in staticfiles directory. REMOVE AFTER DEBUGGING."""
+    staticfiles_path = settings.STATIC_ROOT
+    try:
+        contents = os.listdir(staticfiles_path)
+        html_files = [f for f in contents if f.endswith('.html')]
+        has_next = os.path.isdir(os.path.join(staticfiles_path, '_next'))
+
+        return HttpResponse(f"""
+        <h1>Staticfiles Debug</h1>
+        <p>Path: {staticfiles_path}</p>
+        <p>Total items: {len(contents)}</p>
+        <p>HTML files: {html_files}</p>
+        <p>_next directory exists: {has_next}</p>
+        <p>index.html exists: {os.path.isfile(os.path.join(staticfiles_path, 'index.html'))}</p>
+        <hr>
+        <h2>Directory listing:</h2>
+        <pre>{chr(10).join(sorted(contents))}</pre>
+        """, content_type='text/html')
+    except Exception as e:
+        return HttpResponse(f"Error: {str(e)}", status=500)
+
 urlpatterns = [
+    # Debug endpoint (remove in production)
+    path('_debug/staticfiles/', debug_staticfiles, name='debug-staticfiles'),
+
     # Health check - lightweight, unauthenticated, no DB access.
     # Configure this as Render's Health Check Path.
     path('health/', health_check, name='health-check'),
