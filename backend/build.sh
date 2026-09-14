@@ -2,6 +2,8 @@
 set -e
 
 echo "=== SL Booking Build Script ==="
+echo "Current directory: $(pwd)"
+echo "Backend directory: $(cd .. && pwd && cd - > /dev/null)"
 
 # Step 1: Ensure Node.js is available (use nvm without apt-get)
 echo "Step 1: Setting up Node.js environment..."
@@ -47,35 +49,50 @@ python manage.py collectstatic --noinput --clear
 
 # Step 5: Copy Next.js frontend build to Django static directory
 echo "Step 5: Copying Next.js frontend build to Django staticfiles..."
-if [ -d "../frontend/out" ]; then
-  echo "Found frontend/out directory, copying files..."
-  # Copy all files from frontend/out to staticfiles
-  # This includes: index.html, _next/, and other HTML files
-  cp -r ../frontend/out/* staticfiles/
 
+# Use absolute paths to avoid path confusion
+FRONTEND_OUT="$(cd .. && pwd)/frontend/out"
+STATICFILES="$(pwd)/staticfiles"
+
+echo "Frontend out path: $FRONTEND_OUT"
+echo "Staticfiles path: $STATICFILES"
+
+if [ -d "$FRONTEND_OUT" ]; then
+  echo "✓ Found frontend/out directory at: $FRONTEND_OUT"
+
+  # List contents before copy
+  echo "Contents of $FRONTEND_OUT:"
+  ls -la "$FRONTEND_OUT" | head -20
+
+  echo "Copying files..."
+  # Use -v for verbose output to see each file being copied
+  cp -rv "$FRONTEND_OUT"/* "$STATICFILES/" 2>&1 | head -30
+
+  echo "Verifying copy..."
   # Verify the copy worked
-  if [ -d "staticfiles/_next" ]; then
+  if [ -d "$STATICFILES/_next" ]; then
     echo "✓ Successfully copied _next/ directory"
-    # Count files to verify
-    FILE_COUNT=$(find staticfiles/_next -type f | wc -l)
-    echo "✓ Found $FILE_COUNT files in staticfiles/_next/"
+    FILE_COUNT=$(find "$STATICFILES/_next" -type f 2>/dev/null | wc -l)
+    echo "✓ Found $FILE_COUNT files in _next/"
   else
     echo "✗ ERROR: _next/ directory not found after copy!"
-    echo "Listing frontend/out contents:"
-    ls -la ../frontend/out/
+    echo "Listing $STATICFILES:"
+    ls -la "$STATICFILES/"
     exit 1
   fi
 
-  # Verify index.html was copied
-  if [ -f "staticfiles/index.html" ]; then
-    echo "✓ Successfully copied index.html"
-  else
-    echo "✗ WARNING: index.html not found in staticfiles/"
-  fi
+  # Verify HTML files were copied
+  for html_file in index login register search bookings; do
+    if [ -f "$STATICFILES/${html_file}.html" ]; then
+      echo "✓ $html_file.html copied"
+    else
+      echo "✗ WARNING: $html_file.html not found"
+    fi
+  done
 else
-  echo "✗ ERROR: ../frontend/out directory not found!"
-  echo "Available frontend directories:"
-  ls -la ../frontend/ | grep -E "^d"
+  echo "✗ ERROR: frontend/out directory not found at: $FRONTEND_OUT"
+  echo "Available in parent directory:"
+  ls -la "$(cd .. && pwd)/frontend/" | head -20
   exit 1
 fi
 
