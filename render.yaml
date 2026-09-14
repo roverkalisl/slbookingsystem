@@ -27,7 +27,7 @@ services:
     preDeployCommand: python manage.py migrate --noinput --settings=config.settings.production
 
     # Start: Gunicorn only (serves both API and static frontend)
-    startCommand: /opt/render/project/src/.venv/bin/gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --access-logfile - --error-logfile -
+    startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --access-logfile - --error-logfile -
 
     healthCheckPath: /health/
 
