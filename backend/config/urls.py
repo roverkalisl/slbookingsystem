@@ -6,11 +6,11 @@ Single-service deployment: Django serves both API and Next.js frontend.
 - Frontend: Everything else falls back to index.html (client-side routing)
 """
 
+import os
 from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import path, include
-from django.views.generic import TemplateView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from apps.core.views import health_check
@@ -43,12 +43,16 @@ urlpatterns = [
 # Frontend is built to staticfiles/ and served as a single-page app
 if not settings.DEBUG:
     from django.http import HttpResponse
-    from django.views.decorators.http import condition
 
     def serve_frontend(request, path=''):
         """Serve Next.js frontend index.html for client-side routing"""
+        # Never serve frontend for API or admin routes - let Django handle them
+        if path.startswith('api/') or path.startswith('admin/'):
+            return HttpResponse('Not found', status=404)
+
         try:
-            with open(settings.STATIC_ROOT / 'index.html', 'r') as f:
+            index_path = os.path.join(settings.STATIC_ROOT, 'index.html')
+            with open(index_path, 'r') as f:
                 return HttpResponse(f.read(), content_type='text/html')
         except FileNotFoundError:
             return HttpResponse('Frontend not built', status=404)
