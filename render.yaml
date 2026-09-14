@@ -12,7 +12,8 @@ services:
     autoDeploy: true
 
     # Build: Frontend (npm) → Backend (pip) → Merge static files
-    buildCommand: "cd frontend && npm install && echo '==> Running npm run build...' && npm run build && echo '==> Checking for out directory...' && ls -la out/ && echo '==> Verifying index.html...' && ls -la out/index.html && cd ../backend && echo '==> Installing Python dependencies...' && python -m pip install -r requirements.txt && echo '==> Collecting Django static files...' && python manage.py collectstatic --noinput --clear && echo '==> Copying Next.js output to staticfiles...' && cp -r ../frontend/out/* staticfiles/ && echo '==> Verifying copy success...' && ls -la staticfiles/index.html && echo '==> Build complete'"
+    # Debugging: check at each step what files exist
+    buildCommand: "sh -c 'cd frontend && npm install && npm run build 2>&1; echo \"NPM_EXIT_CODE=$?\"; ls -la ./ | head -20; echo \"Checking for .next...\"; [ -d .next ] && echo \".next exists\" || echo \".next MISSING\"; echo \"Checking for out...\"; [ -d out ] && echo \"out exists\" && ls -la out/ | head -10 || echo \"out MISSING\"; cd ../backend && python -m pip install -r requirements.txt && python manage.py collectstatic --noinput --clear && echo \"Copying frontend build...\"; cp -r ../frontend/out/* staticfiles/ 2>&1 || echo \"Copy failed\"; echo \"Final check:\"; ls -la staticfiles/ | head -10'"
 
     # Pre-deploy: Run migrations
     preDeployCommand: python manage.py migrate --noinput --settings=config.settings.production
