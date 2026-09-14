@@ -167,19 +167,24 @@ class RegisterSerializer(serializers.Serializer):
 class LoginSerializer(serializers.Serializer):
     """
     Serializer for user login.
+    Authenticates by email (not username) since registration creates username from email prefix.
     """
 
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
 
     def validate(self, data):
-        """Authenticate user"""
-        user = authenticate(
-            username=data['email'],
-            password=data['password']
-        )
+        """Authenticate user by email"""
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
 
-        if not user:
+        try:
+            user = User.objects.get(email=data['email'])
+        except User.DoesNotExist:
+            raise ValidationError("Invalid credentials.")
+
+        # Check password
+        if not user.check_password(data['password']):
             raise ValidationError("Invalid credentials.")
 
         data['user'] = user
