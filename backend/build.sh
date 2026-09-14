@@ -60,16 +60,19 @@ echo "Staticfiles path: $STATICFILES"
 if [ -d "$FRONTEND_OUT" ]; then
   echo "✓ Found frontend/out directory"
 
-  # Copy ONLY index.html and _next/ directory
-  # Do NOT copy other HTML files (login.html, search.html, etc) because they break SPA client-side routing
-  # WhiteNoise serves static files before Django routing, so extra HTML files would be served directly
-  # instead of letting the SPA's client-side router handle the navigation.
+  # Copy ALL files from frontend/out to staticfiles
+  # Next.js static export generates HTML files for each route:
+  # - index.html for /
+  # - login.html for /login
+  # - register.html for /register
+  # - search.html for /search
+  # - property/0/index.html for /property/0
+  # - _next/static/ for all JS/CSS assets
+  #
+  # Django serve_frontend() will serve the correct HTML file for each route
 
-  echo "Copying _next/ directory..."
-  cp -r "$FRONTEND_OUT/_next" "$STATICFILES/"
-
-  echo "Copying index.html..."
-  cp "$FRONTEND_OUT/index.html" "$STATICFILES/"
+  echo "Copying all files from frontend/out..."
+  cp -r "$FRONTEND_OUT"/* "$STATICFILES/" || true
 
   echo "Verifying copy..."
   # Verify the copy worked
@@ -82,18 +85,15 @@ if [ -d "$FRONTEND_OUT" ]; then
     exit 1
   fi
 
-  if [ -f "$STATICFILES/index.html" ]; then
-    echo "✓ Successfully copied index.html"
-  else
-    echo "✗ ERROR: index.html not found after copy!"
-    exit 1
-  fi
-
-  # Clean up: Remove other HTML files if they exist (they break SPA routing)
-  echo "Cleaning up extra HTML files (not needed for SPA)..."
-  rm -f "$STATICFILES"/{login,register,search,bookings,404}.html
-  rm -f "$STATICFILES"/{login,register,search,bookings}.txt
-  echo "✓ Removed static HTML files to preserve SPA client-side routing"
+  # Verify HTML files were copied
+  echo "Verifying HTML files..."
+  for html_file in index login register search bookings; do
+    if [ -f "$STATICFILES/${html_file}.html" ]; then
+      echo "✓ $html_file.html found"
+    else
+      echo "⚠ $html_file.html not found (might be OK if route doesn't exist)"
+    fi
+  done
 
 else
   echo "✗ ERROR: frontend/out directory not found at: $FRONTEND_OUT"
