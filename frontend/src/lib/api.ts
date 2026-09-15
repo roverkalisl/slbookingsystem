@@ -249,6 +249,28 @@ class ApiClient {
     return this.normalizeProperty(response.data.data || response.data)
   }
 
+  async approveProperty(id: string): Promise<Property> {
+    const response = await this.client.post<any>(`/properties/${id}/approve/`)
+    return this.normalizeProperty(response.data.data || response.data)
+  }
+
+  async rejectProperty(id: string, reason: string): Promise<Property> {
+    const response = await this.client.post<any>(`/properties/${id}/reject/`, {
+      rejection_reason: reason,
+    })
+    return this.normalizeProperty(response.data.data || response.data)
+  }
+
+  async unsuspendProperty(id: string): Promise<Property> {
+    const response = await this.client.post<any>(`/properties/${id}/unsuspend/`)
+    return this.normalizeProperty(response.data.data || response.data)
+  }
+
+  async unpublishProperty(id: string): Promise<Property> {
+    const response = await this.client.post<any>(`/properties/${id}/unpublish/`)
+    return this.normalizeProperty(response.data.data || response.data)
+  }
+
   // ===== Bookings =====
   async createBooking(data: {
       room_type_id: string
