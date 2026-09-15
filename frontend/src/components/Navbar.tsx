@@ -48,6 +48,16 @@ export function Navbar() {
                 <Link href="/bookings" className="text-gray-600 hover:text-primary transition">
                   My Bookings
                 </Link>
+                {user.roles?.includes('property_owner') && (
+                  <Link href="/owner/dashboard" className="text-gray-600 hover:text-primary transition">
+                    Owner Dashboard
+                  </Link>
+                )}
+                {user.roles?.includes('super_admin') && (
+                  <Link href="/admin/dashboard" className="text-gray-600 hover:text-primary transition">
+                    Admin Dashboard
+                  </Link>
+                )}
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-2">
                     <User className="w-5 h-5" />
@@ -103,6 +113,16 @@ export function Navbar() {
                 <Link href="/bookings" className="block text-gray-600 hover:text-primary">
                   My Bookings
                 </Link>
+                {user.roles?.includes('property_owner') && (
+                  <Link href="/owner/dashboard" className="block text-gray-600 hover:text-primary">
+                    Owner Dashboard
+                  </Link>
+                )}
+                {user.roles?.includes('super_admin') && (
+                  <Link href="/admin/dashboard" className="block text-gray-600 hover:text-primary">
+                    Admin Dashboard
+                  </Link>
+                )}
                 <button
                   onClick={handleLogout}
                   className="w-full text-left text-red-600 hover:text-red-700"

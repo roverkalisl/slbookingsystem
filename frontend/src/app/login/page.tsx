@@ -16,9 +16,16 @@ interface LoginForm {
   password: string
 }
 
+// Determine landing page based on the user's role
+function getRoleHome(roles?: string[]): string {
+  if (roles?.includes('super_admin')) return '/admin/dashboard'
+  if (roles?.includes('property_owner')) return '/owner/dashboard'
+  return '/search'
+}
+
 export default function LoginPage() {
   const router = useRouter()
-  const { isAuthenticated, login, error, clearError } = useAuth()
+  const { user, isAuthenticated, isLoading, login, error, clearError } = useAuth()
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginForm>()
 
   // DIAGNOSTIC: Log when component mounts
@@ -27,11 +34,12 @@ export default function LoginPage() {
   }, [])
 
   useEffect(() => {
-    if (isAuthenticated) {
-      console.log('[LOGIN PAGE] isAuthenticated=true, redirecting to /bookings')
-      router.push('/bookings')
+    if (!isLoading && isAuthenticated) {
+      const destination = getRoleHome(user?.roles)
+      console.log('[LOGIN PAGE] isAuthenticated=true, redirecting to', destination)
+      router.push(destination)
     }
-  }, [isAuthenticated, router])
+  }, [isAuthenticated, isLoading, user, router])
 
   const onSubmit = async (data: LoginForm) => {
     console.log('[LOGIN PAGE] onSubmit entered - form data exists')
@@ -41,8 +49,9 @@ export default function LoginPage() {
     try {
       console.log('[LOGIN PAGE] Calling auth.login()...')
       await login(data.email, data.password)
-      console.log('[LOGIN PAGE] login() succeeded, attempting redirect to /bookings')
-      router.push('/bookings')
+      const destination = getRoleHome(useAuth.getState().user?.roles)
+      console.log('[LOGIN PAGE] login() succeeded, attempting redirect to', destination)
+      router.push(destination)
     } catch (err) {
       console.log('[LOGIN PAGE] login() threw error:', err instanceof Error ? err.message : String(err))
       // Error is stored in auth store

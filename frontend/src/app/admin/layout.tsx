@@ -34,7 +34,7 @@ export default function AdminLayout({
 }: {
   children: React.ReactNode
 }) {
-  const { user, isAuthenticated, logout } = useAuth()
+  const { user, isAuthenticated, isLoading, logout } = useAuth()
   const router = useRouter()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -44,21 +44,25 @@ export default function AdminLayout({
   }, [])
 
   useEffect(() => {
-    if (mounted && !isAuthenticated) {
+    if (mounted && !isLoading && !isAuthenticated) {
       router.push('/login')
     }
     // Check if user is super admin
-    if (mounted && isAuthenticated && !user?.roles?.includes('super_admin')) {
+    if (mounted && !isLoading && isAuthenticated && !user?.roles?.includes('super_admin')) {
       router.push('/')
     }
-  }, [isAuthenticated, mounted, user, router])
+  }, [isAuthenticated, isLoading, mounted, user, router])
 
-  if (!mounted || !isAuthenticated) {
+  if (!mounted || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p className="text-gray-600">Loading...</p>
       </div>
     )
+  }
+
+  if (!isAuthenticated || !user?.roles?.includes('super_admin')) {
+    return null
   }
 
   const navItems: NavItem[] = [
