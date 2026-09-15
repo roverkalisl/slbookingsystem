@@ -6,6 +6,12 @@
 
 import { useParams } from 'next/navigation'
 
+// Required for static export with dynamic routes
+export async function generateStaticParams() {
+  // Return empty array - will be generated on-demand during build
+  return []
+}
+
 export default function OwnerPropertyDetail() {
   const params = useParams()
   const propertyId = params?.id
