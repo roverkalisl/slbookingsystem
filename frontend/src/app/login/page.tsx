@@ -21,19 +21,45 @@ export default function LoginPage() {
   const { isAuthenticated, login, error, clearError } = useAuth()
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginForm>()
 
+  // DIAGNOSTIC: Log when component mounts
+  useEffect(() => {
+    console.log('[LOGIN PAGE] Mounted - diagnostic logging enabled')
+  }, [])
+
   useEffect(() => {
     if (isAuthenticated) {
+      console.log('[LOGIN PAGE] isAuthenticated=true, redirecting to /bookings')
       router.push('/bookings')
     }
   }, [isAuthenticated, router])
 
   const onSubmit = async (data: LoginForm) => {
+    console.log('[LOGIN PAGE] onSubmit entered - form data exists')
+    console.log('[LOGIN PAGE] Email field exists:', !!data.email)
+    console.log('[LOGIN PAGE] Password field exists:', !!data.password)
+
     try {
+      console.log('[LOGIN PAGE] Calling auth.login()...')
       await login(data.email, data.password)
+      console.log('[LOGIN PAGE] login() succeeded, attempting redirect to /bookings')
       router.push('/bookings')
     } catch (err) {
+      console.log('[LOGIN PAGE] login() threw error:', err instanceof Error ? err.message : String(err))
       // Error is stored in auth store
     }
+  }
+
+  // DIAGNOSTIC: Handle form validation failures
+  const onInvalid = (errors: any) => {
+    console.log('[LOGIN PAGE] Form validation FAILED - invalid fields:', Object.keys(errors))
+    Object.entries(errors).forEach(([field, error]: [string, any]) => {
+      console.log(`  - ${field}: ${error.message}`)
+    })
+  }
+
+  // DIAGNOSTIC: Log button click
+  const handleSignInClick = () => {
+    console.log('[LOGIN PAGE] Sign In button clicked')
   }
 
   return (
@@ -64,7 +90,7 @@ export default function LoginPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-4">
             {/* Email */}
             <div>
               <label className="block text-sm font-semibold mb-2">Email</label>
@@ -117,6 +143,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isSubmitting}
+              onClick={handleSignInClick}
               className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? 'Signing in...' : 'Sign In'}

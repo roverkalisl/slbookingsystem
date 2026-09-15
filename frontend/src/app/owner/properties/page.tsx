@@ -39,7 +39,8 @@ export default function OwnerProperties() {
   const loadProperties = async () => {
     try {
       setLoading(true)
-      const data = await api.getProperties()
+      const response = await api.getProperties()
+      const data = response.results || []
 
       // Add action permissions based on status
       const propsWithActions = data.map(prop => ({
@@ -221,9 +222,9 @@ export default function OwnerProperties() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      {property.average_rating > 0 ? (
+                      {(property.average_rating || 0) > 0 ? (
                         <span className="text-sm text-gray-900">
-                          ★ {property.average_rating.toFixed(1)} ({property.total_reviews})
+                          ★ {(property.average_rating || 0).toFixed(1)} ({property.total_reviews || 0})
                         </span>
                       ) : (
                         <span className="text-sm text-gray-500">No reviews</span>

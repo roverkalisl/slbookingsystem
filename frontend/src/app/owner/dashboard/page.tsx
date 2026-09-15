@@ -43,7 +43,8 @@ export default function OwnerDashboard() {
         setLoading(true)
 
         // Load owner's properties
-        const propsData = await api.getProperties()
+        const propsResponse = await api.getProperties()
+        const propsData = propsResponse.results || []
         setProperties(propsData)
 
         // Calculate stats
@@ -206,9 +207,9 @@ export default function OwnerDashboard() {
                           >
                             {property.status.replace('_', ' ').toUpperCase()}
                           </span>
-                          {property.average_rating > 0 && (
+                          {(property.average_rating || 0) > 0 && (
                             <span className="text-xs text-gray-600">
-                              ★ {property.average_rating.toFixed(1)} ({property.total_reviews} reviews)
+                              ★ {(property.average_rating || 0).toFixed(1)} ({property.total_reviews || 0} reviews)
                             </span>
                           )}
                         </div>
@@ -280,7 +281,7 @@ export default function OwnerDashboard() {
           </div>
 
           {/* Alerts */}
-          {stats?.pendingProperties || 0 > 0 && (
+          {(stats?.pendingProperties || 0) > 0 && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
               <div className="flex gap-3">
                 <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0" />

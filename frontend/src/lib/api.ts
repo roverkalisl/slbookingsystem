@@ -45,40 +45,51 @@ class ApiClient {
   }
 
   constructor() {
-    this.client = axios.create({
-      baseURL: API_BASE_URL,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
+    console.log('[API CLIENT] ApiClient constructor called')
+    console.log('[API CLIENT] API_BASE_URL:', API_BASE_URL)
+    try {
+      this.client = axios.create({
+        baseURL: API_BASE_URL,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+      console.log('[API CLIENT] Axios instance created successfully')
 
-    // Add token to requests
-    this.client.interceptors.request.use((config) => {
-      if (this.token) {
-        config.headers.Authorization = `Bearer ${this.token}`
-      }
-      return config
-    })
-
-    // Handle errors
-    this.client.interceptors.response.use(
-      (response) => response,
-      (error: AxiosError) => {
-        if (error.response?.status === 401) {
-          // Unauthorized - clear token and redirect to login
-          this.setToken(null)
-          window.location.href = '/login'
+      // Add token to requests
+      this.client.interceptors.request.use((config) => {
+        if (this.token) {
+          config.headers.Authorization = `Bearer ${this.token}`
         }
-        return Promise.reject(error)
-      }
-    )
+        return config
+      })
 
-    // Load token from localStorage
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('access_token')
-      if (stored) {
-        this.token = stored
+      // Handle errors
+      this.client.interceptors.response.use(
+        (response) => response,
+        (error: AxiosError) => {
+          if (error.response?.status === 401) {
+            // Unauthorized - clear token and redirect to login
+            this.setToken(null)
+            window.location.href = '/login'
+          }
+          return Promise.reject(error)
+        }
+      )
+      console.log('[API CLIENT] Interceptors configured')
+
+      // Load token from localStorage
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem('access_token')
+        if (stored) {
+          this.token = stored
+          console.log('[API CLIENT] Loaded existing token from localStorage')
+        }
       }
+      console.log('[API CLIENT] Constructor completed successfully')
+    } catch (error) {
+      console.error('[API CLIENT] Constructor failed:', error instanceof Error ? error.message : String(error))
+      throw error
     }
   }
 
@@ -112,15 +123,38 @@ class ApiClient {
   }
 
   async login(email: string, password: string): Promise<AuthResponse> {
-    const response = await this.client.post<any>('/auth/login/', {
-      email,
-      password,
-    })
-    const authData = response.data.data || response.data
-    if (authData.access) {
-      this.setToken(authData.access)
+    console.log('[API CLIENT] login() called - email exists:', !!email, 'password exists:', !!password)
+    console.log('[API CLIENT] API_BASE_URL:', API_BASE_URL)
+    console.log('[API CLIENT] Full URL will be:', API_BASE_URL + '/auth/login/')
+    try {
+      console.log('[API CLIENT] Calling axios.post() to /auth/login/...')
+      const response = await this.client.post<any>('/auth/login/', {
+        email,
+        password,
+      })
+      console.log('[API CLIENT] axios.post() succeeded - HTTP Status:', response.status)
+      console.log('[API CLIENT] Response data keys:', Object.keys(response.data || {}))
+      const authData = response.data.data || response.data
+      console.log('[API CLIENT] authData keys:', Object.keys(authData || {}))
+      console.log('[API CLIENT] authData has access token:', !!authData?.access)
+      if (authData.access) {
+        this.setToken(authData.access)
+        console.log('[API CLIENT] Access token stored in localStorage')
+      }
+      return authData
+    } catch (error: any) {
+      console.log('[API CLIENT] axios.post() threw error')
+      if (error.response) {
+        console.log('[API CLIENT] HTTP Status:', error.response.status)
+        console.log('[API CLIENT] Response data keys:', Object.keys(error.response.data || {}))
+      } else if (error.request) {
+        console.log('[API CLIENT] No response received - request made but no response')
+        console.log('[API CLIENT] Request URL:', error.request.responseURL)
+      } else {
+        console.log('[API CLIENT] Error message:', error.message)
+      }
+      throw error
     }
-    return authData
   }
 
   async logout(): Promise<void> {
@@ -194,6 +228,25 @@ class ApiClient {
     return (response.data.data || response.data).map((property: any) =>
       this.normalizeProperty(property)
     )
+  }
+
+  async createProperty(data: any): Promise<Property> {
+    const response = await this.client.post<any>('/properties/', data)
+    return this.normalizeProperty(response.data.data || response.data)
+  }
+
+  async updateProperty(id: string, data: any): Promise<Property> {
+    const response = await this.client.put<any>(`/properties/${id}/`, data)
+    return this.normalizeProperty(response.data.data || response.data)
+  }
+
+  async deleteProperty(id: string): Promise<void> {
+    await this.client.delete(`/properties/${id}/`)
+  }
+
+  async submitPropertyForApproval(id: string): Promise<Property> {
+    const response = await this.client.post<any>(`/properties/${id}/submit-for-approval/`)
+    return this.normalizeProperty(response.data.data || response.data)
   }
 
   // ===== Bookings =====

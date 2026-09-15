@@ -30,19 +30,34 @@ export interface Property {
   id: string
   name: string
   description: string
+  short_description?: string
   property_type: PropertyType
   city: string
   district: string
   province: string
-  status: 'draft' | 'pending_approval' | 'approved' | 'published' | 'suspended'
+  address?: string
+  postal_code?: string
+  latitude?: number
+  longitude?: number
+  status: 'draft' | 'pending_approval' | 'approved' | 'rejected' | 'suspended' | 'unpublished'
   rating: number
   review_count: number
+  average_rating?: number
+  total_reviews?: number
   photos: PropertyPhoto[]
   price_range_min: number
   price_range_max: number
   amenities: Amenity[]
   owner: User
   created_at: string
+  updated_at?: string
+  published_at?: string
+  submitted_at?: string
+  reviewed_at?: string
+  reviewed_by?: User
+  rejection_reason?: string
+  house_rules?: string
+  nearby_attractions?: string
   room_types?: RoomType[]
 }
 
