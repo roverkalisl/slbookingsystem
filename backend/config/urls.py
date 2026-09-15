@@ -21,8 +21,9 @@ urlpatterns = [
     # Configure this as Render's Health Check Path.
     path('health/', health_check, name='health-check'),
 
-    # Admin
-    path('admin/', admin.site.urls),
+    # Django admin is moved off the /admin path to avoid shadowing the frontend
+    # admin dashboard route. Frontend admin pages live under /admin/*.
+    path('django-admin/', admin.site.urls),
 
     # API Documentation
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
@@ -44,8 +45,9 @@ if not settings.DEBUG:
 
     def serve_frontend(request, path=''):
         """Serve Next.js static export HTML for each route"""
-        # Never serve frontend for static files, API, or admin routes - let Django/WhiteNoise handle them
-        if path.startswith('static/') or path in ('api',) or path.startswith('api/') or path.startswith('admin/'):
+        # Never serve frontend for static files or API routes.
+        # The frontend admin dashboard lives under /admin/* and the Django admin is now at /django-admin/.
+        if path.startswith('static/') or path in ('api',) or path.startswith('api/') or path.startswith('django-admin/'):
             return HttpResponse('Not found', status=404)
 
         # For static export, try to serve the route-specific HTML file first
