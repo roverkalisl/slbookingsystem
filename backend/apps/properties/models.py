@@ -78,12 +78,12 @@ class Destination(models.Model):
 class Property(models.Model):
     """Main property model"""
     STATUS_CHOICES = [
-        ('pending', 'Pending'),
-        ('under_review', 'Under Review'),
-        ('verified', 'Verified'),
-        ('published', 'Published'),
-        ('suspended', 'Suspended'),
+        ('draft', 'Draft'),
+        ('pending_approval', 'Pending Approval'),
+        ('approved', 'Approved'),
         ('rejected', 'Rejected'),
+        ('suspended', 'Suspended'),
+        ('unpublished', 'Unpublished'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -104,9 +104,17 @@ class Property(models.Model):
     latitude = models.DecimalField(max_digits=10, decimal_places=8, blank=True, null=True)
     longitude = models.DecimalField(max_digits=11, decimal_places=8, blank=True, null=True)
     google_maps_url = models.URLField(blank=True, null=True)
+    nearby_attractions = models.TextField(blank=True, null=True)
 
-    # Status
-    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='pending', db_index=True)
+    # Status & Approval Workflow
+    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='draft', db_index=True)
+    submitted_at = models.DateTimeField(blank=True, null=True, db_index=True)
+    reviewed_at = models.DateTimeField(blank=True, null=True)
+    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_properties')
+    rejection_reason = models.TextField(blank=True, null=True)
+
+    # House Rules
+    house_rules = models.TextField(blank=True, null=True)
 
     # Media
     cover_photo_url = models.URLField(blank=True, null=True)
@@ -312,3 +320,27 @@ class SeasonalRate(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.start_date} - {self.end_date})"
+
+
+class PropertyContact(models.Model):
+    """Contact information for properties"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    property = models.OneToOneField(Property, on_delete=models.CASCADE, related_name='contact')
+
+    contact_person_name = models.CharField(max_length=255, blank=True, null=True)
+    contact_phone = models.CharField(max_length=20, blank=True, null=True)
+    whatsapp_number = models.CharField(max_length=20, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
+    emergency_contact = models.CharField(max_length=20, blank=True, null=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'property_contacts'
+        indexes = [
+            models.Index(fields=['property_id']),
+        ]
+
+    def __str__(self):
+        return f"Contact for {self.property.name}"

@@ -7,7 +7,7 @@ from django.db import models
 from .models import (
     PropertyType, Amenity, Destination, Property, PropertyPhoto,
     PropertyAmenity, RoomType, RoomTypePhoto, RoomTypeAmenity,
-    Pricing, SeasonalRate
+    Pricing, SeasonalRate, PropertyContact
 )
 
 
@@ -38,6 +38,17 @@ class DestinationSerializer(serializers.ModelSerializer):
             'is_published', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'slug', 'created_at', 'updated_at']
+
+
+class PropertyContactSerializer(serializers.ModelSerializer):
+    """Serializer for property contact information"""
+    class Meta:
+        model = PropertyContact
+        fields = [
+            'id', 'contact_person_name', 'contact_phone', 'whatsapp_number',
+            'email', 'emergency_contact', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
 
 class PropertyPhotoSerializer(serializers.ModelSerializer):
@@ -128,10 +139,11 @@ class PropertyListSerializer(serializers.ModelSerializer):
         model = Property
         fields = [
             'id', 'name', 'slug', 'short_description', 'city', 'district',
-            'status', 'cover_photo_url', 'property_type_name', 'average_rating',
+            'status', 'submitted_at', 'rejection_reason', 'house_rules',
+            'cover_photo_url', 'property_type_name', 'average_rating',
             'total_reviews', 'amenities', 'photo_count', 'created_at', 'published_at'
         ]
-        read_only_fields = ['id', 'slug', 'created_at', 'published_at']
+        read_only_fields = ['id', 'slug', 'created_at', 'published_at', 'submitted_at']
 
     def get_amenities(self, obj):
         amenities = obj.propertyamenity_set.all()[:5]  # Show first 5
@@ -149,6 +161,8 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
     room_types = RoomTypeListSerializer(many=True, read_only=True)
     owner_email = serializers.CharField(source='owner.email', read_only=True)
     owner_name = serializers.SerializerMethodField()
+    contact = PropertyContactSerializer(read_only=True)
+    reviewed_by_name = serializers.CharField(source='reviewed_by.get_full_name', read_only=True, allow_null=True)
 
     class Meta:
         model = Property
@@ -156,14 +170,16 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
             'id', 'owner', 'owner_email', 'owner_name', 'property_type_name',
             'name', 'slug', 'description', 'short_description',
             'address', 'city', 'district', 'province', 'postal_code',
-            'latitude', 'longitude', 'google_maps_url',
-            'status', 'cover_photo_url', 'average_rating', 'total_reviews',
-            'amenities', 'photos', 'room_types',
+            'latitude', 'longitude', 'google_maps_url', 'nearby_attractions',
+            'status', 'submitted_at', 'reviewed_at', 'reviewed_by', 'reviewed_by_name',
+            'rejection_reason', 'house_rules', 'cover_photo_url', 'average_rating', 'total_reviews',
+            'amenities', 'photos', 'room_types', 'contact',
             'created_at', 'updated_at', 'published_at'
         ]
         read_only_fields = [
             'id', 'slug', 'owner', 'average_rating', 'total_reviews',
-            'created_at', 'updated_at', 'published_at'
+            'created_at', 'updated_at', 'published_at', 'submitted_at', 'reviewed_at',
+            'reviewed_by', 'reviewed_by_name'
         ]
 
     def get_amenities(self, obj):
@@ -198,9 +214,10 @@ class PropertyCreateUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'property_type', 'name', 'description', 'short_description',
             'address', 'city', 'district', 'province', 'postal_code',
-            'latitude', 'longitude', 'google_maps_url',
-            'cover_photo_url', 'amenity_ids'
+            'latitude', 'longitude', 'google_maps_url', 'nearby_attractions',
+            'house_rules', 'cover_photo_url', 'amenity_ids', 'status'
         ]
+        read_only_fields = ['status']
 
     def create(self, validated_data):
         # Extract amenities (M2M) from validated data

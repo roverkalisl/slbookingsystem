@@ -80,25 +80,28 @@ class PropertyViewSet(viewsets.ModelViewSet):
         """Get appropriate queryset based on user"""
         user = self.request.user
 
-        # Unauthenticated users see published properties only
+        # Unauthenticated users see approved properties only
         if not user.is_authenticated:
-            return Property.objects.filter(status='published')
+            return Property.objects.filter(status='approved')
 
-        # Guests see published properties
+        # Guests see approved properties only
         if user.has_role('guest'):
-            return Property.objects.filter(status='published')
+            return Property.objects.filter(status='approved')
 
-        # Property owners see their own properties + published
+        # Property owners see:
+        # - Their own properties (all statuses)
+        # - Other owners' approved properties
         if user.has_role('property_owner'):
             return Property.objects.filter(
                 owner=user
-            ) | Property.objects.filter(status='published')
+            ) | Property.objects.filter(status='approved')
 
         # Super admin sees everything
         if user.is_staff:
             return Property.objects.all()
 
-        return Property.objects.filter(status='published')
+        # Default: show only approved properties
+        return Property.objects.filter(status='approved')
 
     def get_serializer_class(self):
         """Choose serializer based on action"""
@@ -115,11 +118,55 @@ class PropertyViewSet(viewsets.ModelViewSet):
         serializer.save(owner=self.request.user)
 
     def perform_update(self, serializer):
-        """Update property (only owner can update)"""
+        """Update property (only owner can update DRAFT/REJECTED properties)"""
         property_obj = self.get_object()
+
+        # Check ownership
         if property_obj.owner != self.request.user and not self.request.user.is_staff:
             raise PermissionDenied("You can only edit your own properties.")
+
+        # Owners can only edit DRAFT or REJECTED properties
+        if not self.request.user.is_staff and property_obj.status not in ['draft', 'rejected']:
+            raise PermissionDenied(
+                f"You can only edit properties in DRAFT or REJECTED status. "
+                f"Current status: {property_obj.status}. "
+                f"Contact support if you need to modify an approved property."
+            )
+
         serializer.save()
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def submit_for_approval(self, request, pk=None):
+        """
+        Owner submits property for admin approval.
+
+        POST /api/properties/{id}/submit-for-approval/
+        """
+        property_obj = self.get_object()
+
+        # Check ownership
+        if property_obj.owner != request.user:
+            raise PermissionDenied("You can only submit your own properties for approval.")
+
+        # Only DRAFT or REJECTED properties can be submitted
+        if property_obj.status not in ['draft', 'rejected']:
+            return Response(
+                {'error': f'Only draft or rejected properties can be submitted. Current status: {property_obj.status}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        property_obj.status = 'pending_approval'
+        property_obj.submitted_at = now()
+        property_obj.save()
+
+        return Response(
+            {
+                'success': True,
+                'message': 'Property submitted for approval',
+                'data': PropertyDetailSerializer(property_obj).data
+            },
+            status=status.HTTP_200_OK
+        )
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAdminUser])
     def approve(self, request, pk=None):
@@ -130,20 +177,23 @@ class PropertyViewSet(viewsets.ModelViewSet):
         """
         property_obj = self.get_object()
 
-        if property_obj.status == 'published':
+        # Only pending_approval properties can be approved
+        if property_obj.status != 'pending_approval':
             return Response(
-                {'error': 'Property is already published'},
+                {'error': f'Only pending properties can be approved. Current status: {property_obj.status}'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        property_obj.status = 'published'
+        property_obj.status = 'approved'
+        property_obj.reviewed_at = now()
+        property_obj.reviewed_by = request.user
         property_obj.published_at = now()
         property_obj.save()
 
         return Response(
             {
                 'success': True,
-                'message': 'Property approved and published',
+                'message': 'Property approved',
                 'data': PropertyDetailSerializer(property_obj).data
             },
             status=status.HTTP_200_OK
@@ -156,13 +206,23 @@ class PropertyViewSet(viewsets.ModelViewSet):
 
         POST /api/properties/{id}/reject/
         {
-            "reason": "Description does not meet guidelines"
+            "rejection_reason": "Description does not meet guidelines"
         }
         """
         property_obj = self.get_object()
-        reason = request.data.get('reason', 'No reason provided')
+        rejection_reason = request.data.get('rejection_reason', 'No reason provided')
+
+        # Only pending_approval properties can be rejected
+        if property_obj.status != 'pending_approval':
+            return Response(
+                {'error': f'Only pending properties can be rejected. Current status: {property_obj.status}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         property_obj.status = 'rejected'
+        property_obj.rejection_reason = rejection_reason
+        property_obj.reviewed_at = now()
+        property_obj.reviewed_by = request.user
         property_obj.save()
 
         # TODO: Send email to owner with rejection reason
@@ -171,7 +231,8 @@ class PropertyViewSet(viewsets.ModelViewSet):
             {
                 'success': True,
                 'message': 'Property rejected',
-                'reason': reason
+                'rejection_reason': rejection_reason,
+                'data': PropertyDetailSerializer(property_obj).data
             },
             status=status.HTTP_200_OK
         )
@@ -182,12 +243,14 @@ class PropertyViewSet(viewsets.ModelViewSet):
         Suspend a property (admin only).
 
         POST /api/properties/{id}/suspend/
-        {
-            "reason": "Violation of terms"
-        }
         """
         property_obj = self.get_object()
-        reason = request.data.get('reason', 'No reason provided')
+
+        if property_obj.status == 'suspended':
+            return Response(
+                {'error': 'Property is already suspended'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         property_obj.status = 'suspended'
         property_obj.save()
@@ -198,7 +261,55 @@ class PropertyViewSet(viewsets.ModelViewSet):
             {
                 'success': True,
                 'message': 'Property suspended',
-                'reason': reason
+                'data': PropertyDetailSerializer(property_obj).data
+            },
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAdminUser])
+    def unsuspend(self, request, pk=None):
+        """
+        Unsuspend a property (admin only). Returns to APPROVED status.
+
+        POST /api/properties/{id}/unsuspend/
+        """
+        property_obj = self.get_object()
+
+        if property_obj.status != 'suspended':
+            return Response(
+                {'error': f'Only suspended properties can be unsuspended. Current status: {property_obj.status}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        property_obj.status = 'approved'
+        property_obj.save()
+
+        return Response(
+            {
+                'success': True,
+                'message': 'Property unsuspended',
+                'data': PropertyDetailSerializer(property_obj).data
+            },
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAdminUser])
+    def unpublish(self, request, pk=None):
+        """
+        Unpublish a property (admin only).
+
+        POST /api/properties/{id}/unpublish/
+        """
+        property_obj = self.get_object()
+
+        property_obj.status = 'unpublished'
+        property_obj.save()
+
+        return Response(
+            {
+                'success': True,
+                'message': 'Property unpublished',
+                'data': PropertyDetailSerializer(property_obj).data
             },
             status=status.HTTP_200_OK
         )
