@@ -24,7 +24,7 @@ export default function OwnerEarnings() {
         <div className="bg-white rounded-lg shadow p-6"><p className="text-gray-600">Pending</p><p className="text-3xl font-bold mt-2 text-orange-600">LKR {earnings.pending.toLocaleString()}</p></div>
       </div>
 
-      <div className="bg-white rounded-lg shadow p-6"><h2 className="text-xl font-bold mb-4">Recent Transactions</h2><div className="space-y-3">{transactions.map(t => (<div key={t.id} className="flex items-center justify-between p-3 border rounded"><div><p className="font-medium text-gray-900">{t.booking}</p><p className="text-sm text-gray-600">{t.date}</p></div><span className={\px-2 py-1 text-xs rounded \\}>{t.status}</span><p className="font-semibold">LKR {t.amount.toLocaleString()}</p></div>))}</div></div>
+      <div className="bg-white rounded-lg shadow p-6"><h2 className="text-xl font-bold mb-4">Recent Transactions</h2><div className="space-y-3">{transactions.map(t => (<div key={t.id} className="flex items-center justify-between p-3 border rounded"><div><p className="font-medium text-gray-900">{t.booking}</p><p className="text-sm text-gray-600">{t.date}</p></div><span className="px-2 py-1 text-xs rounded bg-gray-100">{t.status}</span><p className="font-semibold">LKR {t.amount.toLocaleString()}</p></div>))}</div></div>
     </div>
   )
 }

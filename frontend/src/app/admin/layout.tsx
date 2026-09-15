@@ -48,7 +48,7 @@ export default function AdminLayout({
       router.push('/login')
     }
     // Check if user is super admin
-    if (mounted && isAuthenticated && !user?.is_staff) {
+    if (mounted && isAuthenticated && !user?.roles?.includes('super_admin')) {
       router.push('/')
     }
   }, [isAuthenticated, mounted, user, router])

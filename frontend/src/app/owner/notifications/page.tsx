@@ -12,7 +12,7 @@ export default function OwnerNotifications() {
   return (
     <div>
       <div className="mb-8"><h1 className="text-4xl font-bold text-gray-900">Notifications</h1></div>
-      <div className="space-y-3">{notifications.map(n => (<div key={n.id} className={\p-4 rounded-lg border \\}><div className="flex items-start justify-between"><div><p className="font-semibold text-gray-900">{n.title}</p><p className="text-sm text-gray-600 mt-1">{n.message}</p><p className="text-xs text-gray-500 mt-2">{n.time}</p></div><div className="flex gap-2">{!n.read && <button><MailOpen className="w-5 h-5 text-blue-600" /></button>}<button><Trash2 className="w-5 h-5 text-red-600" /></button></div></div></div>))}</div>
+      <div className="space-y-3">{notifications.map(n => (<div key={n.id} className="p-4 rounded-lg border"><div className="flex items-start justify-between"><div><p className="font-semibold text-gray-900">{n.title}</p><p className="text-sm text-gray-600 mt-1">{n.message}</p><p className="text-xs text-gray-500 mt-2">{n.time}</p></div><div className="flex gap-2">{!n.read && <button><MailOpen className="w-5 h-5 text-blue-600" /></button>}<button><Trash2 className="w-5 h-5 text-red-600" /></button></div></div></div>))}</div>
     </div>
   )
 }

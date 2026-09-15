@@ -59,6 +59,8 @@ export interface Property {
   house_rules?: string
   nearby_attractions?: string
   room_types?: RoomType[]
+  bedrooms?: number
+  max_guests?: number
 }
 
 export interface PropertyType {

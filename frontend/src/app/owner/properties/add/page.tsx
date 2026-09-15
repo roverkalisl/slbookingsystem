@@ -1,7 +1,7 @@
 /**
- * Property Wizard - REAL working multi-step form
- * Each step saves to database immediately
- * Complete workflow: Draft → Save Draft → Submit → Pending Approval → Admin Approves → Live
+ * Property Add Template - multi-step listing setup form
+ * Each step saves to the database immediately and supports draft submissions.
+ * Complete workflow: Draft → Save Draft → Submit → Pending Approval → Admin Review → Live
  */
 
 'use client'
@@ -17,6 +17,15 @@ import {
   Check,
   AlertCircle,
   Loader2,
+  Camera,
+  Sparkles,
+  Star,
+  Wifi,
+  Car,
+  Utensils,
+  Waves,
+  Trees,
+  ShieldCheck,
 } from 'lucide-react'
 
 interface PropertyFormData {
@@ -56,6 +65,16 @@ const PROPERTY_TYPES = [
   { id: 8, name: 'Homestay' },
 ]
 
+const AMENITY_OPTIONS = [
+  { label: 'Free Wi‑Fi', icon: Wifi },
+  { label: 'Air conditioning', icon: Sparkles },
+  { label: 'Private kitchen', icon: Utensils },
+  { label: 'Pool', icon: Waves },
+  { label: 'Garden', icon: Trees },
+  { label: 'Parking', icon: Car },
+  { label: '24/7 security', icon: ShieldCheck },
+]
+
 const STEPS = [
   { number: 1, title: 'Basic Information', description: 'Property name and details' },
   { number: 2, title: 'Location', description: 'Address and coordinates' },
@@ -71,6 +90,15 @@ export default function PropertyWizard() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [propertyId, setPropertyId] = useState<string | null>(null)
+  const [coverPhotoUrl, setCoverPhotoUrl] = useState(
+    'https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=1200&q=80'
+  )
+  const [selectedAmenities, setSelectedAmenities] = useState<string[]>([
+    'Free Wi‑Fi',
+    'Air conditioning',
+    'Private kitchen',
+  ])
+  const [basePrice, setBasePrice] = useState(180)
 
   const {
     register,
@@ -95,6 +123,21 @@ export default function PropertyWizard() {
   })
 
   const formValues = watch()
+
+  const templateChecklist = [
+    { label: 'Basic details', done: Boolean(formValues.name && formValues.property_type) },
+    { label: 'Location', done: Boolean(formValues.address && formValues.city && formValues.district) },
+    { label: 'Capacity', done: Boolean(formValues.max_guests && formValues.bedrooms) },
+    { label: 'House rules', done: Boolean(formValues.house_rules) },
+  ]
+
+  const toggleAmenity = (label: string) => {
+    setSelectedAmenities((current) =>
+      current.includes(label)
+        ? current.filter((item) => item !== label)
+        : [...current, label]
+    )
+  }
 
   // Save draft automatically
   const saveDraft = async (data: PropertyFormData) => {
@@ -181,15 +224,40 @@ export default function PropertyWizard() {
     <div className="max-w-6xl mx-auto">
       {/* Header */}
       <div className="mb-8">
+        <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-blue-700">
+          Property template
+        </div>
         <h1 className="text-4xl font-bold text-gray-900">Create Property</h1>
-        <p className="text-gray-600 mt-2">Complete all steps to list your property</p>
+        <p className="text-gray-600 mt-2">
+          Use this property listing template to add your space, save progress, and submit for approval.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        {templateChecklist.map((item, index) => (
+          <div
+            key={item.label}
+            className={`rounded-xl border p-4 ${
+              item.done ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-white'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Step {index + 1}
+              </span>
+              <span className={`h-2.5 w-2.5 rounded-full ${item.done ? 'bg-green-500' : 'bg-gray-300'}`} />
+            </div>
+            <p className="font-medium text-gray-900">{item.label}</p>
+          </div>
+        ))}
       </div>
 
       <div className="flex gap-8">
         {/* Sidebar */}
-        <div className="hidden lg:block w-64">
+        <div className="hidden lg:block w-80">
           <div className="bg-white rounded-lg shadow sticky top-8 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-6">Progress</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Template progress</h3>
+            <p className="text-sm text-gray-600 mb-6">Complete each section of your property listing.</p>
             <div className="space-y-3">
               {STEPS.map((step) => (
                 <button
@@ -226,6 +294,39 @@ export default function PropertyWizard() {
               ))}
             </div>
 
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <p className="text-xs text-gray-600 mb-2">Listing preview</p>
+              <div className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-50">
+                <div
+                  className="h-24 bg-cover bg-center"
+                  style={{ backgroundImage: `url(${coverPhotoUrl})` }}
+                />
+                <div className="p-3">
+                  <p className="text-sm font-semibold text-gray-900 truncate">
+                    {formValues.name || 'Your property name'}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1 truncate">
+                    {formValues.city || 'City'}, {formValues.district || 'District'}
+                  </p>
+                  <p className="mt-2 text-sm font-bold text-blue-700">
+                    LKR {basePrice.toLocaleString()} / night
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-xl border border-blue-100 bg-blue-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Highlights</p>
+              <div className="mt-3 space-y-2 text-sm text-gray-700">
+                {selectedAmenities.slice(0, 4).map((item) => (
+                  <div key={item} className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-blue-600" />
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {propertyId && (
               <div className="mt-6 pt-6 border-t border-gray-200">
                 <p className="text-xs text-gray-600 mb-2">Property ID</p>
@@ -240,7 +341,7 @@ export default function PropertyWizard() {
         {/* Main Content */}
         <div className="flex-1">
           <form onSubmit={handleSubmit(onSubmit)}>
-            <div className="bg-white rounded-lg shadow p-8 mb-8">
+            <div className="bg-white rounded-lg shadow p-8 mb-8 border border-gray-200">
               {/* Mobile Progress */}
               <div className="lg:hidden mb-6">
                 <div className="flex justify-between mb-2">
@@ -289,10 +390,29 @@ export default function PropertyWizard() {
 
               {/* Step Content */}
               <div className="space-y-6">
-                {currentStep === 1 && <Step1Form register={register} errors={errors} />}
+                {currentStep === 1 && (
+                  <Step1Form
+                    register={register}
+                    errors={errors}
+                    coverPhotoUrl={coverPhotoUrl}
+                    setCoverPhotoUrl={setCoverPhotoUrl}
+                  />
+                )}
                 {currentStep === 2 && <Step2Form register={register} errors={errors} />}
-                {currentStep === 3 && <Step3Form register={register} />}
-                {currentStep === 4 && <Step4Form register={register} />}
+                {currentStep === 3 && (
+                  <Step3Form
+                    register={register}
+                    selectedAmenities={selectedAmenities}
+                    toggleAmenity={toggleAmenity}
+                  />
+                )}
+                {currentStep === 4 && (
+                  <Step4Form
+                    register={register}
+                    basePrice={basePrice}
+                    setBasePrice={setBasePrice}
+                  />
+                )}
               </div>
             </div>
 
@@ -373,7 +493,7 @@ export default function PropertyWizard() {
 }
 
 // Step 1: Basic Information
-function Step1Form({ register, errors }: any) {
+function Step1Form({ register, errors, coverPhotoUrl, setCoverPhotoUrl }: any) {
   return (
     <>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -456,6 +576,35 @@ function Step1Form({ register, errors }: any) {
         {errors.description && (
           <p className="text-red-600 text-sm mt-1">{errors.description.message}</p>
         )}
+      </div>
+
+      <div className="mt-8 rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-6">
+        <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
+          <div>
+            <p className="text-lg font-semibold text-gray-900">Cover photo</p>
+            <p className="text-sm text-gray-600">Use a strong hero image for your listing.</p>
+          </div>
+          <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-sm font-medium text-gray-700 border border-gray-200">
+            <Camera className="h-4 w-4" />
+            hero image
+          </div>
+        </div>
+
+        <label className="block text-sm font-medium text-gray-900 mb-2">Image URL</label>
+        <input
+          type="url"
+          value={coverPhotoUrl}
+          onChange={(event) => setCoverPhotoUrl(event.target.value)}
+          placeholder="https://..."
+          className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+        />
+
+        <div className="mt-5 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+          <div
+            className="h-52 bg-cover bg-center"
+            style={{ backgroundImage: `url(${coverPhotoUrl})` }}
+          />
+        </div>
       </div>
     </>
   )
@@ -605,7 +754,7 @@ function Step2Form({ register, errors }: any) {
 }
 
 // Step 3: Accommodation
-function Step3Form({ register }: any) {
+function Step3Form({ register, selectedAmenities, toggleAmenity }: any) {
   return (
     <>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
@@ -682,6 +831,48 @@ function Step3Form({ register }: any) {
         </div>
       </div>
 
+      <div className="mt-8 rounded-2xl border border-gray-200 bg-gradient-to-br from-white to-blue-50 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <p className="text-lg font-semibold text-gray-900">Amenities</p>
+            <p className="text-sm text-gray-600">Choose the best features for your listing.</p>
+          </div>
+          <div className="inline-flex items-center gap-2 rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700">
+            <Star className="h-3.5 w-3.5" />
+            top picks
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {AMENITY_OPTIONS.map(({ label, icon: Icon }) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => toggleAmenity(label)}
+              className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left text-sm font-medium transition ${
+                selectedAmenities.includes(label)
+                  ? 'border-blue-400 bg-blue-50 text-blue-800'
+                  : 'border-gray-200 bg-white text-gray-700 hover:border-blue-200 hover:bg-blue-50'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <Icon className="h-4 w-4 text-blue-600" />
+                {label}
+              </span>
+              <span
+                className={`flex h-5 w-5 items-center justify-center rounded-full border text-xs ${
+                  selectedAmenities.includes(label)
+                    ? 'border-blue-600 bg-blue-600 text-white'
+                    : 'border-gray-300 bg-white'
+                }`}
+              >
+                {selectedAmenities.includes(label) ? '✓' : ''}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="space-y-4 pt-6 border-t border-gray-200">
         <label className="flex items-center gap-3 cursor-pointer">
           <input
@@ -715,7 +906,7 @@ function Step3Form({ register }: any) {
 }
 
 // Step 4: House Rules
-function Step4Form({ register }: any) {
+function Step4Form({ register, basePrice, setBasePrice }: any) {
   return (
     <>
       <div>
@@ -733,16 +924,65 @@ function Step4Form({ register }: any) {
         </p>
       </div>
 
+      <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="rounded-2xl border border-gray-200 bg-white p-5">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-lg font-semibold text-gray-900">Gallery preview</p>
+            <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">
+              4 images
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {[1, 2, 3, 4].map((item) => (
+              <div
+                key={item}
+                className="h-24 rounded-xl bg-cover bg-center"
+                style={{
+                  backgroundImage:
+                    "url('https://images.unsplash.com/photo-1494526585095-c41746248156?auto=format&fit=crop&w=600&q=80')",
+                }}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
+          <p className="text-lg font-semibold text-gray-900">Pricing preview</p>
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600">Base rate</span>
+              <label className="flex items-center gap-2 font-semibold text-gray-900">
+                <span className="text-sm">LKR</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={basePrice}
+                  onChange={(event) => setBasePrice(Number(event.target.value))}
+                  className="w-24 rounded-lg border border-blue-200 bg-white px-2 py-1 text-right"
+                />
+                <span className="text-sm">/night</span>
+              </label>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600">Cleaning fee</span>
+              <span className="font-semibold text-gray-900">LKR 2,500</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600">Service fee</span>
+              <span className="font-semibold text-gray-900">LKR 3,000</span>
+            </div>
+            <div className="mt-4 rounded-xl bg-white p-3">
+              <p className="text-xs uppercase tracking-wide text-gray-500">Estimated total</p>
+              <p className="mt-1 text-2xl font-bold text-blue-700">LKR 5,680</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="bg-green-50 border border-green-200 rounded-lg p-4 mt-6">
         <p className="text-sm text-green-900">
           <strong>✓ Ready to submit!</strong> Your property details are complete.
           Click "Submit for Approval" to send to our admin team for review.
-        </p>
-      </div>
-
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <p className="text-sm text-blue-900">
-          <strong>Coming Soon:</strong> Photos, Rooms, Amenities, and Pricing management will be available after creating your property.
         </p>
       </div>
     </>
