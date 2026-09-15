@@ -2,19 +2,17 @@
  * Owner Property Detail/Edit - View and manage a specific property
  */
 
-'use client'
-
-import { useParams } from 'next/navigation'
-
 // Required for static export with dynamic routes
 export async function generateStaticParams() {
-  // Return empty array - will be generated on-demand during build
-  return []
+  return [{ id: '0' }]
 }
 
-export default function OwnerPropertyDetail() {
-  const params = useParams()
-  const propertyId = params?.id
+export default function OwnerPropertyDetail({
+  params,
+}: {
+  params: { id: string }
+}) {
+  const propertyId = params.id
 
   return (
     <div>
