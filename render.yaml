@@ -15,8 +15,8 @@ services:
     # build.sh: Install Node.js → Frontend build → Django setup → Merge static files
     buildCommand: bash build.sh
 
-    # Pre-deploy: Run migrations
-    preDeployCommand: python manage.py migrate --noinput --settings=config.settings.production
+    # Pre-deploy: Run migrations and load fixtures
+    preDeployCommand: python manage.py migrate --noinput --settings=config.settings.production && python manage.py loaddata property_types --settings=config.settings.production
 
     # Start: Execute start.sh script
     # start.sh: Start Gunicorn (serves both API and static frontend)
