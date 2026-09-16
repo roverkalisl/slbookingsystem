@@ -139,6 +139,37 @@ export default function PropertyWizard() {
     )
   }
 
+  // Helper to extract error message from DRF response
+  const getErrorMessage = (err: any): string => {
+    if (!err.response?.data) {
+      return 'Failed to save draft'
+    }
+
+    const data = err.response.data
+
+    // Check for detail field (non-field errors)
+    if (data.detail) return data.detail
+    if (data.message) return data.message
+    if (typeof data === 'string') return data
+
+    // Check for field validation errors
+    if (typeof data === 'object') {
+      const fieldErrors = []
+      for (const [field, errors] of Object.entries(data)) {
+        if (Array.isArray(errors)) {
+          fieldErrors.push(`${field}: ${errors.join(', ')}`)
+        } else if (typeof errors === 'string') {
+          fieldErrors.push(`${field}: ${errors}`)
+        }
+      }
+      if (fieldErrors.length > 0) {
+        return fieldErrors.slice(0, 2).join(' | ')
+      }
+    }
+
+    return 'Failed to save draft'
+  }
+
   // Save draft automatically
   const saveDraft = async (data: PropertyFormData) => {
     try {
@@ -164,10 +195,7 @@ export default function PropertyWizard() {
 
       setTimeout(() => setSuccess(null), 3000)
     } catch (err: any) {
-      const errorMsg =
-        err.response?.data?.detail ||
-        err.response?.data?.message ||
-        'Failed to save draft'
+      const errorMsg = getErrorMessage(err)
       setError(errorMsg)
       console.error('Save draft error:', err)
     } finally {
@@ -209,10 +237,9 @@ export default function PropertyWizard() {
         }, 1500)
       }
     } catch (err: any) {
-      const errorMsg =
-        err.response?.data?.detail ||
-        err.response?.data?.message ||
-        'Failed to submit property'
+      // Use the improved error message extraction
+      const errorMsg = getErrorMessage(err)
+        .replace('Failed to save draft', 'Failed to submit property')
       setError(errorMsg)
       console.error('Submit error:', err)
     } finally {
