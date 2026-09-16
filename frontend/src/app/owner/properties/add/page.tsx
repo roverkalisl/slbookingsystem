@@ -79,8 +79,19 @@ const STEPS = [
   { number: 1, title: 'Basic Information', description: 'Property name and details' },
   { number: 2, title: 'Location', description: 'Address and coordinates' },
   { number: 3, title: 'Accommodation', description: 'Rooms and capacity' },
-  { number: 4, title: 'House Rules', description: 'Rules and policies' },
+  { number: 4, title: 'Rooms & Units', description: 'Add and configure room types' },
+  { number: 5, title: 'House Rules', description: 'Rules and policies' },
 ]
+
+interface RoomType {
+  id: string
+  name: string
+  description: string
+  max_adults: number
+  max_children: number
+  number_of_beds: number
+  total_rooms: number
+}
 
 export default function PropertyWizard() {
   const router = useRouter()
@@ -99,6 +110,16 @@ export default function PropertyWizard() {
     'Private kitchen',
   ])
   const [basePrice, setBasePrice] = useState(180)
+  const [rooms, setRooms] = useState<RoomType[]>([])
+  const [showAddRoom, setShowAddRoom] = useState(false)
+  const [newRoom, setNewRoom] = useState<Partial<RoomType>>({
+    name: '',
+    description: '',
+    max_adults: 2,
+    max_children: 0,
+    number_of_beds: 1,
+    total_rooms: 1,
+  })
 
   const {
     register,
@@ -128,8 +149,11 @@ export default function PropertyWizard() {
     { label: 'Basic details', done: Boolean(formValues.name && formValues.property_type) },
     { label: 'Location', done: Boolean(formValues.address && formValues.city && formValues.district) },
     { label: 'Capacity', done: Boolean(formValues.max_guests && formValues.bedrooms) },
+    { label: 'Room types', done: rooms.length > 0 },
     { label: 'House rules', done: Boolean(formValues.house_rules) },
   ]
+
+  const isFormComplete = templateChecklist.every(item => item.done)
 
   const toggleAmenity = (label: string) => {
     setSelectedAmenities((current) =>
@@ -137,6 +161,37 @@ export default function PropertyWizard() {
         ? current.filter((item) => item !== label)
         : [...current, label]
     )
+  }
+
+  const addRoom = () => {
+    if (!newRoom.name || !newRoom.max_adults) {
+      setError('Please fill in all room details')
+      return
+    }
+    const room: RoomType = {
+      id: Date.now().toString(),
+      name: newRoom.name,
+      description: newRoom.description || '',
+      max_adults: newRoom.max_adults,
+      max_children: newRoom.max_children || 0,
+      number_of_beds: newRoom.number_of_beds || 1,
+      total_rooms: newRoom.total_rooms || 1,
+    }
+    setRooms([...rooms, room])
+    setNewRoom({
+      name: '',
+      description: '',
+      max_adults: 2,
+      max_children: 0,
+      number_of_beds: 1,
+      total_rooms: 1,
+    })
+    setShowAddRoom(false)
+    setError(null)
+  }
+
+  const deleteRoom = (id: string) => {
+    setRooms(rooms.filter(r => r.id !== id))
   }
 
   // Helper to extract error message from DRF response
@@ -207,6 +262,14 @@ export default function PropertyWizard() {
     try {
       setLoading(true)
       setError(null)
+
+      // Validate that at least one room is added
+      if (rooms.length === 0) {
+        setError('At least one room type is required before submitting')
+        setCurrentStep(4) // Go to Rooms & Units step
+        setLoading(false)
+        return
+      }
 
       const propertyData = {
         ...data,
@@ -434,10 +497,24 @@ export default function PropertyWizard() {
                   />
                 )}
                 {currentStep === 4 && (
+                  <RoomManagementForm
+                    rooms={rooms}
+                    newRoom={newRoom}
+                    setNewRoom={setNewRoom}
+                    showAddRoom={showAddRoom}
+                    setShowAddRoom={setShowAddRoom}
+                    addRoom={addRoom}
+                    deleteRoom={deleteRoom}
+                    error={error}
+                    setError={setError}
+                  />
+                )}
+                {currentStep === 5 && (
                   <Step4Form
                     register={register}
                     basePrice={basePrice}
                     setBasePrice={setBasePrice}
+                    isFormComplete={isFormComplete}
                   />
                 )}
               </div>
@@ -494,13 +571,23 @@ export default function PropertyWizard() {
                 ) : (
                   <button
                     type="submit"
-                    disabled={loading}
-                    className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+                    disabled={loading || rooms.length === 0 || !isFormComplete}
+                    className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     {loading ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
                         Submitting...
+                      </>
+                    ) : rooms.length === 0 ? (
+                      <>
+                        <AlertCircle className="w-4 h-4" />
+                        Add Rooms to Submit
+                      </>
+                    ) : !isFormComplete ? (
+                      <>
+                        <AlertCircle className="w-4 h-4" />
+                        Complete All Steps
                       </>
                     ) : (
                       <>
@@ -515,6 +602,162 @@ export default function PropertyWizard() {
           </form>
         </div>
       </div>
+    </div>
+  )
+}
+
+// Step 4: Room Management
+function RoomManagementForm({ rooms, showAddRoom, setShowAddRoom, newRoom, setNewRoom, addRoom, deleteRoom, error, setError }: any) {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Room Types & Units</h3>
+        <p className="text-sm text-gray-600 mb-4">
+          Add at least one room type to your property. Guests will choose from these options when booking.
+        </p>
+      </div>
+
+      {rooms.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="font-medium text-gray-700">Current Rooms ({rooms.length})</h4>
+          {rooms.map((room: RoomType) => (
+            <div key={room.id} className="flex items-center justify-between bg-gray-50 p-4 rounded-lg border border-gray-200">
+              <div>
+                <p className="font-medium text-gray-900">{room.name}</p>
+                <p className="text-sm text-gray-600">{room.description || 'No description'}</p>
+                <p className="text-xs text-gray-500 mt-2">
+                  {room.max_adults} adults • {room.max_children} children • {room.number_of_beds} beds • {room.total_rooms} unit(s)
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => deleteRoom(room.id)}
+                className="text-red-600 hover:text-red-700 font-medium text-sm"
+              >
+                Delete
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+          <p className="text-sm text-red-700">{error}</p>
+        </div>
+      )}
+
+      {showAddRoom ? (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-4">
+          <h4 className="font-medium text-gray-900">Add New Room Type</h4>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Room Name *</label>
+              <input
+                type="text"
+                value={newRoom.name || ''}
+                onChange={(e) => setNewRoom({ ...newRoom, name: e.target.value })}
+                placeholder="e.g., Deluxe Suite"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Max Adults *</label>
+              <input
+                type="number"
+                value={newRoom.max_adults || 2}
+                onChange={(e) => setNewRoom({ ...newRoom, max_adults: parseInt(e.target.value) })}
+                min="1"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Max Children</label>
+              <input
+                type="number"
+                value={newRoom.max_children || 0}
+                onChange={(e) => setNewRoom({ ...newRoom, max_children: parseInt(e.target.value) })}
+                min="0"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Number of Beds</label>
+              <input
+                type="number"
+                value={newRoom.number_of_beds || 1}
+                onChange={(e) => setNewRoom({ ...newRoom, number_of_beds: parseInt(e.target.value) })}
+                min="1"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Total Units</label>
+              <input
+                type="number"
+                value={newRoom.total_rooms || 1}
+                onChange={(e) => setNewRoom({ ...newRoom, total_rooms: parseInt(e.target.value) })}
+                min="1"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea
+              value={newRoom.description || ''}
+              onChange={(e) => setNewRoom({ ...newRoom, description: e.target.value })}
+              placeholder="e.g., Spacious suite with ocean view..."
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={addRoom}
+              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+            >
+              Add Room
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowAddRoom(false)
+                setError(null)
+              }}
+              className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-medium"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowAddRoom(true)}
+          className="w-full px-4 py-3 border-2 border-dashed border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50 font-medium"
+        >
+          + Add Room Type
+        </button>
+      )}
+
+      {rooms.length === 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+          <p className="text-sm text-yellow-800">
+            <strong>Required:</strong> You must add at least one room type before submitting your property.
+          </p>
+        </div>
+      )}
     </div>
   )
 }
@@ -933,7 +1176,7 @@ function Step3Form({ register, selectedAmenities, toggleAmenity }: any) {
 }
 
 // Step 4: House Rules
-function Step4Form({ register, basePrice, setBasePrice }: any) {
+function Step4Form({ register, basePrice, setBasePrice, isFormComplete }: any) {
   return (
     <>
       <div>
@@ -1006,12 +1249,14 @@ function Step4Form({ register, basePrice, setBasePrice }: any) {
         </div>
       </div>
 
-      <div className="bg-green-50 border border-green-200 rounded-lg p-4 mt-6">
-        <p className="text-sm text-green-900">
-          <strong>✓ Ready to submit!</strong> Your property details are complete.
-          Click "Submit for Approval" to send to our admin team for review.
-        </p>
-      </div>
+      {isFormComplete && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mt-6">
+          <p className="text-sm text-green-900">
+            <strong>✓ Ready to submit!</strong> Your property details are complete.
+            Click "Submit for Approval" to send to our admin team for review.
+          </p>
+        </div>
+      )}
     </>
   )
 }
