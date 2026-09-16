@@ -87,6 +87,13 @@ interface RoomType {
   id: string
   name: string
   description: string
+  room_type: string
+  bed_configuration: string
+  bathroom_type: string
+  room_size: number
+  room_amenities: string[]
+  view_type: string
+  room_photos: string[]
   max_adults: number
   max_children: number
   number_of_beds: number
@@ -115,6 +122,13 @@ export default function PropertyWizard() {
   const [newRoom, setNewRoom] = useState<Partial<RoomType>>({
     name: '',
     description: '',
+    room_type: 'bedroom',
+    bed_configuration: 'double',
+    bathroom_type: 'private',
+    room_size: 0,
+    room_amenities: [],
+    view_type: '',
+    room_photos: [],
     max_adults: 2,
     max_children: 0,
     number_of_beds: 1,
@@ -164,14 +178,21 @@ export default function PropertyWizard() {
   }
 
   const addRoom = () => {
-    if (!newRoom.name || !newRoom.max_adults) {
-      setError('Please fill in all room details')
+    if (!newRoom.name || !newRoom.max_adults || !newRoom.room_type || !newRoom.bed_configuration) {
+      setError('Please fill in required room details (name, adults, room type, bed configuration)')
       return
     }
     const room: RoomType = {
       id: Date.now().toString(),
       name: newRoom.name,
       description: newRoom.description || '',
+      room_type: newRoom.room_type,
+      bed_configuration: newRoom.bed_configuration,
+      bathroom_type: newRoom.bathroom_type || 'private',
+      room_size: newRoom.room_size || 0,
+      room_amenities: newRoom.room_amenities || [],
+      view_type: newRoom.view_type || '',
+      room_photos: newRoom.room_photos || [],
       max_adults: newRoom.max_adults,
       max_children: newRoom.max_children || 0,
       number_of_beds: newRoom.number_of_beds || 1,
@@ -181,6 +202,13 @@ export default function PropertyWizard() {
     setNewRoom({
       name: '',
       description: '',
+      room_type: 'bedroom',
+      bed_configuration: 'double',
+      bathroom_type: 'private',
+      room_size: 0,
+      room_amenities: [],
+      view_type: '',
+      room_photos: [],
       max_adults: 2,
       max_children: 0,
       number_of_beds: 1,
@@ -621,18 +649,49 @@ function RoomManagementForm({ rooms, showAddRoom, setShowAddRoom, newRoom, setNe
         <div className="space-y-3">
           <h4 className="font-medium text-gray-700">Current Rooms ({rooms.length})</h4>
           {rooms.map((room: RoomType) => (
-            <div key={room.id} className="flex items-center justify-between bg-gray-50 p-4 rounded-lg border border-gray-200">
-              <div>
+            <div key={room.id} className="flex items-start justify-between bg-gray-50 p-4 rounded-lg border border-gray-200">
+              <div className="flex-1">
                 <p className="font-medium text-gray-900">{room.name}</p>
-                <p className="text-sm text-gray-600">{room.description || 'No description'}</p>
-                <p className="text-xs text-gray-500 mt-2">
-                  {room.max_adults} adults • {room.max_children} children • {room.number_of_beds} beds • {room.total_rooms} unit(s)
-                </p>
+                <p className="text-sm text-gray-600 mt-1">{room.description || 'No description'}</p>
+                <div className="grid grid-cols-2 gap-3 mt-3 text-xs text-gray-600">
+                  <div>
+                    <span className="font-medium">Type:</span> {room.room_type}
+                  </div>
+                  <div>
+                    <span className="font-medium">Beds:</span> {room.bed_configuration}
+                  </div>
+                  <div>
+                    <span className="font-medium">Bathroom:</span> {room.bathroom_type}
+                  </div>
+                  <div>
+                    <span className="font-medium">Size:</span> {room.room_size > 0 ? `${room.room_size} sqft` : 'N/A'}
+                  </div>
+                  {room.view_type && (
+                    <div>
+                      <span className="font-medium">View:</span> {room.view_type}
+                    </div>
+                  )}
+                  <div>
+                    <span className="font-medium">Capacity:</span> {room.max_adults} adults • {room.max_children} children
+                  </div>
+                  <div>
+                    <span className="font-medium">Units:</span> {room.total_rooms}
+                  </div>
+                </div>
+                {room.room_amenities && room.room_amenities.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {room.room_amenities.map((amenity, idx) => (
+                      <span key={idx} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                        {amenity}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
               <button
                 type="button"
                 onClick={() => deleteRoom(room.id)}
-                className="text-red-600 hover:text-red-700 font-medium text-sm"
+                className="ml-4 text-red-600 hover:text-red-700 font-medium text-sm whitespace-nowrap"
               >
                 Delete
               </button>
@@ -648,80 +707,199 @@ function RoomManagementForm({ rooms, showAddRoom, setShowAddRoom, newRoom, setNe
       )}
 
       {showAddRoom ? (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-4">
-          <h4 className="font-medium text-gray-900">Add New Room Type</h4>
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-6 max-h-96 overflow-y-auto">
+          <h4 className="font-medium text-gray-900 sticky top-0 bg-blue-50">Add New Room Type</h4>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Room Name *</label>
-              <input
-                type="text"
-                value={newRoom.name || ''}
-                onChange={(e) => setNewRoom({ ...newRoom, name: e.target.value })}
-                placeholder="e.g., Deluxe Suite"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+          {/* Basic Information */}
+          <div className="space-y-4 pb-4 border-b border-blue-200">
+            <h5 className="text-sm font-semibold text-gray-800">Basic Information</h5>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Room Name *</label>
+                <input
+                  type="text"
+                  value={newRoom.name || ''}
+                  onChange={(e) => setNewRoom({ ...newRoom, name: e.target.value })}
+                  placeholder="e.g., Deluxe Suite"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Room Type *</label>
+                <select
+                  value={newRoom.room_type || 'bedroom'}
+                  onChange={(e) => setNewRoom({ ...newRoom, room_type: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="bedroom">Bedroom</option>
+                  <option value="living_room">Living Room</option>
+                  <option value="studio">Studio</option>
+                  <option value="suite">Suite</option>
+                  <option value="dormitory">Dormitory</option>
+                  <option value="bungalow">Bungalow</option>
+                  <option value="villa">Villa</option>
+                </select>
+              </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Max Adults *</label>
-              <input
-                type="number"
-                value={newRoom.max_adults || 2}
-                onChange={(e) => setNewRoom({ ...newRoom, max_adults: parseInt(e.target.value) })}
-                min="1"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Max Children</label>
-              <input
-                type="number"
-                value={newRoom.max_children || 0}
-                onChange={(e) => setNewRoom({ ...newRoom, max_children: parseInt(e.target.value) })}
-                min="0"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Number of Beds</label>
-              <input
-                type="number"
-                value={newRoom.number_of_beds || 1}
-                onChange={(e) => setNewRoom({ ...newRoom, number_of_beds: parseInt(e.target.value) })}
-                min="1"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Total Units</label>
-              <input
-                type="number"
-                value={newRoom.total_rooms || 1}
-                onChange={(e) => setNewRoom({ ...newRoom, total_rooms: parseInt(e.target.value) })}
-                min="1"
+              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+              <textarea
+                value={newRoom.description || ''}
+                onChange={(e) => setNewRoom({ ...newRoom, description: e.target.value })}
+                placeholder="e.g., Spacious suite with ocean view..."
+                rows={2}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-            <textarea
-              value={newRoom.description || ''}
-              onChange={(e) => setNewRoom({ ...newRoom, description: e.target.value })}
-              placeholder="e.g., Spacious suite with ocean view..."
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+          {/* Room Configuration */}
+          <div className="space-y-4 pb-4 border-b border-blue-200">
+            <h5 className="text-sm font-semibold text-gray-800">Configuration</h5>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Bed Configuration *</label>
+                <select
+                  value={newRoom.bed_configuration || 'double'}
+                  onChange={(e) => setNewRoom({ ...newRoom, bed_configuration: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="single">Single</option>
+                  <option value="double">Double</option>
+                  <option value="queen">Queen</option>
+                  <option value="king">King</option>
+                  <option value="twin">Twin</option>
+                  <option value="bunk">Bunk</option>
+                  <option value="futon">Futon</option>
+                  <option value="mixed">Mixed</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Bathroom Type</label>
+                <select
+                  value={newRoom.bathroom_type || 'private'}
+                  onChange={(e) => setNewRoom({ ...newRoom, bathroom_type: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="private">Private</option>
+                  <option value="en-suite">En-Suite</option>
+                  <option value="shared">Shared</option>
+                  <option value="ensuite_partial">Ensuite Partial</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Room Size (sqft)</label>
+                <input
+                  type="number"
+                  value={newRoom.room_size || 0}
+                  onChange={(e) => setNewRoom({ ...newRoom, room_size: parseInt(e.target.value) || 0 })}
+                  placeholder="e.g., 350"
+                  min="0"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">View Type</label>
+                <select
+                  value={newRoom.view_type || ''}
+                  onChange={(e) => setNewRoom({ ...newRoom, view_type: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">No specific view</option>
+                  <option value="ocean_view">Ocean View</option>
+                  <option value="mountain_view">Mountain View</option>
+                  <option value="garden_view">Garden View</option>
+                  <option value="city_view">City View</option>
+                  <option value="pool_view">Pool View</option>
+                  <option value="balcony">Balcony</option>
+                  <option value="terrace">Terrace</option>
+                </select>
+              </div>
+            </div>
           </div>
 
-          <div className="flex gap-2">
+          {/* Amenities */}
+          <div className="space-y-3 pb-4 border-b border-blue-200">
+            <h5 className="text-sm font-semibold text-gray-800">Room Amenities</h5>
+            <div className="grid grid-cols-2 gap-2">
+              {['AC', 'WiFi', 'TV', 'Minibar', 'Hairdryer', 'Workspace', 'Safe', 'Heater'].map((amenity) => (
+                <label key={amenity} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={newRoom.room_amenities?.includes(amenity) || false}
+                    onChange={(e) => {
+                      const current = newRoom.room_amenities || []
+                      if (e.target.checked) {
+                        setNewRoom({ ...newRoom, room_amenities: [...current, amenity] })
+                      } else {
+                        setNewRoom({ ...newRoom, room_amenities: current.filter((a: string) => a !== amenity) })
+                      }
+                    }}
+                    className="rounded"
+                  />
+                  <span className="text-gray-700">{amenity}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Capacity & Inventory */}
+          <div className="space-y-4 pb-4">
+            <h5 className="text-sm font-semibold text-gray-800">Capacity & Inventory</h5>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Max Adults *</label>
+                <input
+                  type="number"
+                  value={newRoom.max_adults || 2}
+                  onChange={(e) => setNewRoom({ ...newRoom, max_adults: parseInt(e.target.value) })}
+                  min="1"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Max Children</label>
+                <input
+                  type="number"
+                  value={newRoom.max_children || 0}
+                  onChange={(e) => setNewRoom({ ...newRoom, max_children: parseInt(e.target.value) })}
+                  min="0"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Number of Beds</label>
+                <input
+                  type="number"
+                  value={newRoom.number_of_beds || 1}
+                  onChange={(e) => setNewRoom({ ...newRoom, number_of_beds: parseInt(e.target.value) })}
+                  min="1"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Total Units Available *</label>
+                <input
+                  type="number"
+                  value={newRoom.total_rooms || 1}
+                  onChange={(e) => setNewRoom({ ...newRoom, total_rooms: parseInt(e.target.value) })}
+                  min="1"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <p className="text-xs text-gray-500 mt-1">Number of identical rooms for booking inventory</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-2 sticky bottom-0 bg-blue-50 pt-4">
             <button
               type="button"
               onClick={addRoom}
