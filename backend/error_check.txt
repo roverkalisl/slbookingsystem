@@ -1,0 +1,2 @@
+Valid: False
+property_type: [ErrorDetail(string='Invalid pk "1" - object does not exist.', code='does_not_exist')]

@@ -1,0 +1,5 @@
+Valid: True
+SUCCESS! Property ID: 7061c431-1f8a-458e-bce7-aa5df239db8d
+Property name: Test Villa
+Property owner: testprop@example.com
+Status: draft
