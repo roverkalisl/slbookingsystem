@@ -240,7 +240,10 @@ class PropertyCreateUpdateSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'status']
 
     def create(self, validated_data):
+        import logging
         from django.db import transaction
+
+        logger = logging.getLogger(__name__)
 
         # Extract M2M and nested data
         amenities = validated_data.pop('amenities', [])
@@ -251,29 +254,56 @@ class PropertyCreateUpdateSerializer(serializers.ModelSerializer):
         if request:
             validated_data['owner'] = request.user
 
+        # Validate required fields
+        if not validated_data.get('name'):
+            raise serializers.ValidationError({'name': 'Property name is required'})
+        if not validated_data.get('city'):
+            raise serializers.ValidationError({'city': 'City is required'})
+        if not validated_data.get('district'):
+            raise serializers.ValidationError({'district': 'District is required'})
+        if not validated_data.get('province'):
+            raise serializers.ValidationError({'province': 'Province is required'})
+
         # Create property and room types within transaction
-        with transaction.atomic():
-            # Create property
-            property_obj = Property.objects.create(**validated_data)
+        try:
+            with transaction.atomic():
+                # Create property
+                property_obj = Property.objects.create(**validated_data)
+                logger.info(f"Created property {property_obj.id}")
 
-            # Add amenities
-            if amenities:
-                PropertyAmenity.objects.bulk_create([
-                    PropertyAmenity(property=property_obj, amenity=amenity)
-                    for amenity in amenities
-                ])
-
-            # Create room types
-            for room_data in room_types_data:
-                room_amenities = room_data.pop('amenities', [])
-                room_obj = RoomType.objects.create(property=property_obj, **room_data)
-
-                # Add room amenities
-                if room_amenities:
-                    RoomTypeAmenity.objects.bulk_create([
-                        RoomTypeAmenity(room_type=room_obj, amenity=amenity)
-                        for amenity in room_amenities
+                # Add amenities
+                if amenities:
+                    PropertyAmenity.objects.bulk_create([
+                        PropertyAmenity(property=property_obj, amenity=amenity)
+                        for amenity in amenities
                     ])
+                    logger.info(f"Added {len(amenities)} amenities to property {property_obj.id}")
+
+                # Create room types
+                for idx, room_data in enumerate(room_types_data):
+                    try:
+                        room_amenities = room_data.pop('amenities', [])
+                        logger.info(f"Creating room {idx+1} with data: {room_data}")
+                        room_obj = RoomType.objects.create(property=property_obj, **room_data)
+                        logger.info(f"Created room type {room_obj.id} for property {property_obj.id}")
+
+                        # Add room amenities
+                        if room_amenities:
+                            RoomTypeAmenity.objects.bulk_create([
+                                RoomTypeAmenity(room_type=room_obj, amenity=amenity)
+                                for amenity in room_amenities
+                            ])
+                    except Exception as e:
+                        logger.error(f"Error creating room type: {str(e)}", exc_info=True)
+                        raise serializers.ValidationError({
+                            'room_types': f'Error creating room: {str(e)}'
+                        })
+
+        except Exception as e:
+            logger.error(f"Error in property creation transaction: {str(e)}", exc_info=True)
+            raise serializers.ValidationError({
+                'detail': f'Error creating property: {str(e)}'
+            })
 
         return property_obj
 

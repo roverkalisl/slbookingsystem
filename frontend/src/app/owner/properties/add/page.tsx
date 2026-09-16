@@ -229,24 +229,64 @@ export default function PropertyWizard() {
     }
 
     const data = err.response.data
+    console.log('Error response data:', data)
 
-    // Check for detail field (non-field errors)
-    if (data.detail) return data.detail
-    if (data.message) return data.message
+    // Check for top-level error/detail/message fields (non-field errors)
+    if (data.detail) {
+      if (typeof data.detail === 'string') return data.detail
+      if (Array.isArray(data.detail)) return data.detail.map((d: any) => d.detail || d).join(', ')
+    }
+    if (data.error) {
+      if (typeof data.error === 'string') return data.error
+    }
+    if (data.message) {
+      if (typeof data.message === 'string') return data.message
+    }
     if (typeof data === 'string') return data
 
-    // Check for field validation errors
-    if (typeof data === 'object') {
+    // Check for nested field_errors object
+    if (data.field_errors && typeof data.field_errors === 'object') {
       const fieldErrors = []
-      for (const [field, errors] of Object.entries(data)) {
+      for (const [field, errors] of Object.entries(data.field_errors)) {
         if (Array.isArray(errors)) {
           fieldErrors.push(`${field}: ${errors.join(', ')}`)
+        } else if (typeof errors === 'object' && errors !== null) {
+          fieldErrors.push(`${field}: ${JSON.stringify(errors)}`)
         } else if (typeof errors === 'string') {
           fieldErrors.push(`${field}: ${errors}`)
         }
       }
       if (fieldErrors.length > 0) {
-        return fieldErrors.slice(0, 2).join(' | ')
+        return fieldErrors.slice(0, 3).join(' | ')
+      }
+    }
+
+    // Check for field validation errors (DRF default format)
+    if (typeof data === 'object') {
+      const fieldErrors = []
+      for (const [field, errors] of Object.entries(data)) {
+        // Skip non-error fields
+        if (['detail', 'error', 'message', 'field_errors'].includes(field)) continue
+
+        if (Array.isArray(errors)) {
+          const errorMsgs = errors.map((e: any) => {
+            if (typeof e === 'string') return e
+            if (e.detail) return e.detail
+            return JSON.stringify(e)
+          })
+          fieldErrors.push(`${field}: ${errorMsgs.join(', ')}`)
+        } else if (typeof errors === 'object' && errors !== null) {
+          if ((errors as any).detail) {
+            fieldErrors.push(`${field}: ${(errors as any).detail}`)
+          } else {
+            fieldErrors.push(`${field}: ${JSON.stringify(errors)}`)
+          }
+        } else if (typeof errors === 'string') {
+          fieldErrors.push(`${field}: ${errors}`)
+        }
+      }
+      if (fieldErrors.length > 0) {
+        return fieldErrors.slice(0, 3).join(' | ')
       }
     }
 

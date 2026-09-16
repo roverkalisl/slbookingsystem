@@ -2,6 +2,7 @@
 Views for property management.
 """
 
+import logging
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -10,6 +11,8 @@ from django.shortcuts import get_object_or_404
 from django.utils.timezone import now
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
+
+logger = logging.getLogger(__name__)
 
 from .models import (
     PropertyType, Amenity, Destination, Property, PropertyPhoto,
@@ -115,7 +118,14 @@ class PropertyViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         """Create property with current user as owner"""
-        serializer.save(owner=self.request.user)
+        logger.info(f"Creating property for user {self.request.user.email if self.request.user else 'anonymous'}")
+        logger.debug(f"Serializer data: {serializer.validated_data}")
+        try:
+            serializer.save(owner=self.request.user)
+            logger.info(f"Property created successfully: {serializer.instance.id}")
+        except Exception as e:
+            logger.error(f"Error creating property: {str(e)}", exc_info=True)
+            raise
 
     def perform_update(self, serializer):
         """Update property (only owner can update DRAFT/REJECTED properties)"""
