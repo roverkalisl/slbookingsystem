@@ -6,6 +6,8 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.filters import SearchFilter, OrderingFilter
+from django_filters.rest_framework import DjangoFilterBackend
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -13,7 +15,8 @@ from .models import Booking, Availability
 from .serializers import (
     BookingListSerializer, BookingDetailSerializer, BookingCreateSerializer,
     BookingCancelSerializer, PriceCalculationSerializer, PriceBreakdownSerializer,
-    AvailabilityCheckSerializer, AvailabilityResponseSerializer
+    AvailabilityCheckSerializer, AvailabilityResponseSerializer,
+    AdminBookingListSerializer
 )
 from .service import BookingService, BookingConflictError
 from apps.properties.models import RoomType
@@ -26,15 +29,25 @@ class BookingViewSet(viewsets.ModelViewSet):
 
     Endpoints:
     - POST /api/bookings/ - Create booking (CRITICAL: Transaction-safe)
-    - GET /api/bookings/ - List my bookings
+    - GET /api/bookings/ - List my bookings (admins see all)
     - GET /api/bookings/{id}/ - Booking details
     - POST /api/bookings/{id}/cancel/ - Cancel booking
     - POST /api/bookings/{id}/confirm-payment/ - Confirm payment
     - POST /api/bookings/calculate-price/ - Calculate price
     - POST /api/bookings/check-availability/ - Check availability
+
+    Admin filtering:
+    - ?status=pending - Filter by booking status
+    - ?payment_status=paid - Filter by payment status
+    - ?search=keyword - Search booking reference or guest email
     """
 
     permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['status', 'payment_status']
+    search_fields = ['booking_reference', 'guest__email']
+    ordering_fields = ['created_at', 'check_in_date', 'total_price']
+    ordering = ['-created_at']
 
     def get_queryset(self):
         """Get bookings for current user"""
@@ -60,6 +73,9 @@ class BookingViewSet(viewsets.ModelViewSet):
         if self.action == 'create':
             return BookingCreateSerializer
         elif self.action == 'list':
+            # Admin users get enhanced list with owner info
+            if self.request.user.is_staff:
+                return AdminBookingListSerializer
             return BookingListSerializer
         elif self.action == 'retrieve':
             return BookingDetailSerializer

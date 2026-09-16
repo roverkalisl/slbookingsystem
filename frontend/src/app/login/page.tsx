@@ -17,9 +17,11 @@ interface LoginForm {
 }
 
 // Determine landing page based on the user's role
-function getRoleHome(roles?: string[]): string {
-  if (roles?.includes('super_admin')) return '/admin/dashboard'
-  if (roles?.includes('property_owner')) return '/owner/dashboard'
+function getRoleHome(user?: { roles?: string[]; is_staff?: boolean; is_superuser?: boolean } | null): string {
+  if (user?.is_staff || user?.is_superuser || user?.roles?.includes('super_admin')) {
+    return '/admin/dashboard'
+  }
+  if (user?.roles?.includes('property_owner')) return '/owner/dashboard'
   return '/search'
 }
 
@@ -35,7 +37,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      const destination = getRoleHome(user?.roles)
+      const destination = getRoleHome(user)
       console.log('[LOGIN PAGE] isAuthenticated=true, redirecting to', destination)
       router.push(destination)
     }
@@ -49,7 +51,7 @@ export default function LoginPage() {
     try {
       console.log('[LOGIN PAGE] Calling auth.login()...')
       await login(data.email, data.password)
-      const destination = getRoleHome(useAuth.getState().user?.roles)
+      const destination = getRoleHome(useAuth.getState().user)
       console.log('[LOGIN PAGE] login() succeeded, attempting redirect to', destination)
       router.push(destination)
     } catch (err) {

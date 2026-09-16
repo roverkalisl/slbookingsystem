@@ -31,6 +31,7 @@ urlpatterns = [
 
     # API endpoints
     path('api/auth/', include('apps.core.urls', namespace='auth')),
+    path('api/admin/', include('apps.core.admin_urls', namespace='admin')),
     path('api/properties/', include('apps.properties.urls', namespace='properties')),
     path('api/bookings/', include('apps.bookings.urls', namespace='bookings')),
     path('api/reviews/', include('apps.reviews.urls', namespace='reviews')),

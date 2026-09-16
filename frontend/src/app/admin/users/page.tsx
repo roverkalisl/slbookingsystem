@@ -5,41 +5,68 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { api } from '@/lib/api'
+import type { User } from '@/types'
 import {
   Users,
   Search,
   Filter,
   MoreVertical,
-  UserPlus,
   Shield,
   Mail,
+  CheckCircle2,
+  XCircle,
+  Loader2,
 } from 'lucide-react'
 
-interface User {
-  id: string
-  email: string
-  first_name: string
-  last_name: string
-  is_staff: boolean
-  is_active: boolean
-  date_joined: string
-  role: 'super_admin' | 'property_owner' | 'guest'
+interface AdminUser extends User {
+  is_staff?: boolean
+  is_superuser?: boolean
+  is_active?: boolean
+  date_joined?: string
+  last_login?: string
+  property_count?: number
+  booking_count?: number
+  roles?: string[]
 }
 
 export default function AdminUsers() {
-  const [users] = useState<User[]>([])
-  const [filteredUsers, setFilteredUsers] = useState<User[]>([])
+  const [users, setUsers] = useState<AdminUser[]>([])
+  const [filteredUsers, setFilteredUsers] = useState<AdminUser[]>([])
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | 'owner' | 'guest' | 'admin'>('all')
+  const [loading, setLoading] = useState(true)
+  const [actingOnUser, setActingOnUser] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
+  // Load users from API
+  useEffect(() => {
+    loadUsers()
+  }, [])
+
+  const loadUsers = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const response = await api.getAdminUsers('', undefined, undefined, 1, 100)
+      setUsers(response.results || [])
+    } catch (err) {
+      console.error('Failed to load users:', err)
+      setError('Failed to load users')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Filter users based on search and role filter
   useEffect(() => {
     let filtered = users
 
     if (filter !== 'all') {
       filtered = filtered.filter(u => {
-        if (filter === 'admin') return u.is_staff
-        if (filter === 'owner') return !u.is_staff && u.role === 'property_owner'
-        if (filter === 'guest') return !u.is_staff && u.role === 'guest'
+        if (filter === 'admin') return u.is_staff || u.is_superuser || u.roles?.includes('super_admin')
+        if (filter === 'owner') return u.roles?.includes('property_owner')
+        if (filter === 'guest') return u.roles?.includes('guest')
         return true
       })
     }
@@ -47,23 +74,66 @@ export default function AdminUsers() {
     if (search) {
       filtered = filtered.filter(
         u =>
-          u.email.toLowerCase().includes(search.toLowerCase()) ||
-          u.first_name.toLowerCase().includes(search.toLowerCase()) ||
-          u.last_name.toLowerCase().includes(search.toLowerCase())
+          u.email?.toLowerCase().includes(search.toLowerCase()) ||
+          u.first_name?.toLowerCase().includes(search.toLowerCase()) ||
+          u.last_name?.toLowerCase().includes(search.toLowerCase()) ||
+          u.phone?.toLowerCase().includes(search.toLowerCase())
       )
     }
 
     setFilteredUsers(filtered)
   }, [users, filter, search])
 
-  const getRoleBadge = (user: User) => {
-    if (user.is_staff) {
-      return <span className="px-3 py-1 bg-purple-100 text-purple-800 text-xs font-semibold rounded-full">Super Admin</span>
+  const getRoleBadge = (user: AdminUser) => {
+    if (user.is_staff || user.is_superuser) {
+      return <span className="px-3 py-1 bg-purple-100 text-purple-800 text-xs font-semibold rounded-full">Admin</span>
     }
-    if (user.role === 'property_owner') {
+    if (user.roles?.includes('property_owner')) {
       return <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full">Owner</span>
     }
-    return <span className="px-3 py-1 bg-gray-100 text-gray-800 text-xs font-semibold rounded-full">Guest</span>
+    if (user.roles?.includes('guest')) {
+      return <span className="px-3 py-1 bg-gray-100 text-gray-800 text-xs font-semibold rounded-full">Guest</span>
+    }
+    return <span className="px-3 py-1 bg-gray-100 text-gray-800 text-xs font-semibold rounded-full">Unknown</span>
+  }
+
+  const handleActivate = async (userId: string) => {
+    try {
+      setActingOnUser(userId)
+      await api.activateUser(userId)
+      // Reload users after action
+      await loadUsers()
+    } catch (err) {
+      console.error('Failed to activate user:', err)
+      setError('Failed to activate user')
+    } finally {
+      setActingOnUser(null)
+    }
+  }
+
+  const handleDeactivate = async (userId: string) => {
+    if (!confirm('Are you sure you want to deactivate this user?')) {
+      return
+    }
+    try {
+      setActingOnUser(userId)
+      await api.deactivateUser(userId, 'Deactivated by admin')
+      // Reload users after action
+      await loadUsers()
+    } catch (err) {
+      console.error('Failed to deactivate user:', err)
+      setError('Failed to deactivate user')
+    } finally {
+      setActingOnUser(null)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p className="text-gray-600">Loading users...</p>
+      </div>
+    )
   }
 
   return (
@@ -73,6 +143,13 @@ export default function AdminUsers() {
         <h1 className="text-4xl font-bold text-gray-900">User Management</h1>
         <p className="text-gray-600 mt-2">Manage all platform users and their roles</p>
       </div>
+
+      {/* Error Message */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-800">
+          {error}
+        </div>
+      )}
 
       {/* Search & Filter */}
       <div className="bg-white rounded-lg shadow p-6 mb-6">
@@ -158,12 +235,28 @@ export default function AdminUsers() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
-                      {new Date(user.date_joined).toLocaleDateString()}
+                      {user.date_joined ? new Date(user.date_joined).toLocaleDateString() : '—'}
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <button className="p-2 hover:bg-gray-100 rounded">
-                        <MoreVertical className="w-4 h-4 text-gray-600" />
-                      </button>
+                    <td className="px-6 py-4 text-right flex justify-end gap-2">
+                      {user.is_active ? (
+                        <button
+                          onClick={() => handleDeactivate(user.id)}
+                          disabled={actingOnUser === user.id}
+                          className="flex items-center gap-1 px-3 py-1 bg-red-100 text-red-700 hover:bg-red-200 rounded text-sm disabled:opacity-50"
+                        >
+                          {actingOnUser === user.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                          Deactivate
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleActivate(user.id)}
+                          disabled={actingOnUser === user.id}
+                          className="flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 hover:bg-green-200 rounded text-sm disabled:opacity-50"
+                        >
+                          {actingOnUser === user.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                          Activate
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

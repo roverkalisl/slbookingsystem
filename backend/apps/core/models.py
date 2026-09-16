@@ -4,8 +4,22 @@ Core models for SL Booking - User, Role, Permissions.
 
 import uuid
 from django.db import models
-from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import AbstractUser, UserManager as DjangoUserManager
 from django.utils.translation import gettext_lazy as _
+
+
+class UserManager(DjangoUserManager):
+    """Create users from email without requiring callers to provide username."""
+
+    def create_user(self, email, password=None, **extra_fields):
+        email = self.normalize_email(email)
+        extra_fields.setdefault('username', email.split('@')[0])
+        return super().create_user(email=email, password=password, **extra_fields)
+
+    def create_superuser(self, email, password=None, **extra_fields):
+        extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_superuser', True)
+        return self.create_user(email, password, **extra_fields)
 
 
 class User(AbstractUser):
@@ -41,6 +55,7 @@ class User(AbstractUser):
 
     # Relations
     roles = models.ManyToManyField('Role', through='UserRole', related_name='users')
+    objects = UserManager()
 
     class Meta:
         db_table = 'users'
@@ -55,6 +70,11 @@ class User(AbstractUser):
     def has_role(self, role_name):
         """Check if user has a specific role"""
         return self.roles.filter(name=role_name).exists()
+
+    @property
+    def is_admin(self):
+        """Compatibility alias for Django's administrator flags."""
+        return self.is_staff or self.is_superuser or self.has_role('super_admin')
 
     def is_guest(self):
         return self.has_role('guest')

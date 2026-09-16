@@ -42,28 +42,26 @@ export default function AdminDashboard() {
       try {
         setLoading(true)
 
-        // Load properties (includes pending for approval)
+        // Load dashboard stats from real admin API
+        const dashStats = await api.getAdminDashboardStats()
+
+        // Load pending properties for display
         const propsResponse = await api.getProperties()
-        const propsData = propsResponse.results || []
-        setProperties(propsData)
+        const allProps = propsResponse.results || []
+        const pendingProps = allProps.filter(p => p.status === 'pending_approval')
+        setProperties(pendingProps)
 
-        // Calculate stats
-        const pending = propsData.filter(p => p.status === 'pending_approval').length
-        const approved = propsData.filter(p => p.status === 'approved').length
-        const avgRating = propsData.length > 0
-          ? (propsData.reduce((sum, p) => sum + (p.average_rating || 0), 0) / propsData.length)
-          : 0
-
+        // Set all stats from API
         setStats({
-          totalUsers: 0, // TODO: Load from admin API
-          totalOwners: 0,
-          totalProperties: propsData.length,
-          pendingProperties: pending,
-          approvedProperties: approved,
-          totalBookings: 0,
-          activeBookings: 0,
-          platformRevenue: 0,
-          averageRating: avgRating,
+          totalUsers: dashStats.total_users || 0,
+          totalOwners: dashStats.total_owners || 0,
+          totalProperties: dashStats.total_properties || 0,
+          pendingProperties: dashStats.pending_properties || 0,
+          approvedProperties: dashStats.approved_properties || 0,
+          totalBookings: dashStats.total_bookings || 0,
+          activeBookings: dashStats.confirmed_bookings || 0,
+          platformRevenue: dashStats.platform_revenue || 0,
+          averageRating: Number(dashStats.average_rating || 0),
         })
       } catch (error) {
         console.error('Failed to load admin dashboard:', error)

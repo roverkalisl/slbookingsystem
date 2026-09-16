@@ -25,6 +25,7 @@ from .serializers import (
     RefreshTokenSerializer,
     PasswordResetRequestSerializer,
     PasswordResetConfirmSerializer,
+    ChangePasswordSerializer,
     TokenSerializer,
 )
 
@@ -287,10 +288,12 @@ class AuthViewSet(viewsets.ViewSet):
             "confirm_password": "NewPass123!"
         }
         """
+        serializer = ChangePasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
         user = request.user
-        old_password = request.data.get('old_password')
-        new_password = request.data.get('new_password')
-        confirm_password = request.data.get('confirm_password')
+        old_password = serializer.validated_data['old_password']
+        new_password = serializer.validated_data['new_password']
 
         # Validate old password
         if not user.check_password(old_password):
@@ -298,16 +301,6 @@ class AuthViewSet(viewsets.ViewSet):
                 {
                     'success': False,
                     'errors': [{'old_password': 'Incorrect password'}],
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Validate new passwords match
-        if new_password != confirm_password:
-            return Response(
-                {
-                    'success': False,
-                    'errors': [{'confirm_password': 'Passwords do not match'}],
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )

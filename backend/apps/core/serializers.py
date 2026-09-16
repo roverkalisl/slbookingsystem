@@ -3,7 +3,7 @@ Serializers for authentication and user management.
 """
 
 from rest_framework import serializers
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import AuthenticationFailed, ValidationError
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
@@ -33,11 +33,19 @@ class UserSerializer(serializers.ModelSerializer):
             'preferred_language',
             'notification_email',
             'notification_sms',
+            'is_staff',
+            'is_superuser',
             'roles',
             'created_at',
             'updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = [
+            'id',
+            'created_at',
+            'updated_at',
+            'is_staff',
+            'is_superuser',
+        ]
 
     def get_roles(self, obj):
         """Get user roles"""
@@ -86,12 +94,20 @@ class UserDetailSerializer(serializers.ModelSerializer):
             'preferred_language',
             'notification_email',
             'notification_sms',
+            'is_staff',
+            'is_superuser',
             'profile',
             'roles',
             'created_at',
             'updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = [
+            'id',
+            'created_at',
+            'updated_at',
+            'is_staff',
+            'is_superuser',
+        ]
 
     def get_roles(self, obj):
         return obj.roles.values_list('name', flat=True)
@@ -112,12 +128,14 @@ class RegisterSerializer(serializers.Serializer):
     )
     password2 = serializers.CharField(
         write_only=True,
-        required=True,
+        required=False,
         style={'input_type': 'password'}
     )
+    password_confirm = serializers.CharField(write_only=True, required=False)
     role = serializers.ChoiceField(
         choices=['guest', 'property_owner'],
-        required=True
+        required=False,
+        default='guest'
     )
     phone = serializers.CharField(max_length=20, required=False)
 
@@ -134,7 +152,11 @@ class RegisterSerializer(serializers.Serializer):
 
     def validate(self, data):
         """Validate password confirmation"""
-        if data['password'] != data['password2']:
+        confirmation = data.get('password2') or data.get('password_confirm')
+        if not confirmation:
+            raise ValidationError({'password2': 'Password confirmation is required.'})
+        data['password2'] = confirmation
+        if data['password'] != confirmation:
             raise ValidationError(
                 {'password2': "Passwords do not match."}
             )
@@ -181,11 +203,11 @@ class LoginSerializer(serializers.Serializer):
         try:
             user = User.objects.get(email=data['email'])
         except User.DoesNotExist:
-            raise ValidationError("Invalid credentials.")
+            raise AuthenticationFailed("Invalid credentials.")
 
         # Check password
         if not user.check_password(data['password']):
-            raise ValidationError("Invalid credentials.")
+            raise AuthenticationFailed("Invalid credentials.")
 
         data['user'] = user
         return data
@@ -243,6 +265,29 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
                 {'confirm_password': "Passwords do not match."}
             )
         return data
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    """Validate a password change for an authenticated user."""
+
+    old_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True)
+    new_password_confirm = serializers.CharField(write_only=True)
+
+    def validate_new_password(self, value):
+        validate_password(value)
+        return value
+
+    def validate(self, data):
+        if data['new_password'] != data['new_password_confirm']:
+            raise ValidationError(
+                {'new_password_confirm': 'Passwords do not match.'}
+            )
+        return data
+
+
+# Retain the legacy import while the API uses separate request/confirm serializers.
+PasswordResetSerializer = PasswordResetConfirmSerializer
 
 
 class TokenSerializer(serializers.Serializer):

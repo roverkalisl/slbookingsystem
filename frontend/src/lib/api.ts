@@ -391,6 +391,77 @@ class ApiClient {
     const response = await this.client.get<Review[]>(`/reviews/?property_id=${propertyId}`)
     return response.data
   }
+
+  // ===== Admin: Users =====
+  async getAdminUsers(
+    search?: string,
+    role?: string,
+    is_active?: boolean,
+    page: number = 1,
+    page_size: number = 20
+  ): Promise<PaginatedResponse<User>> {
+    const params = new URLSearchParams()
+    if (search) params.append('search', search)
+    if (role) params.append('roles__name', role)
+    if (is_active !== undefined) params.append('is_active', String(is_active))
+    params.append('page', String(page))
+    params.append('page_size', String(page_size))
+
+    const response = await this.client.get<any>(
+      `/admin/users/?${params.toString()}`
+    )
+    return {
+      ...response.data,
+      results: response.data.results || [],
+    }
+  }
+
+  async getAdminUserDetail(id: string): Promise<User> {
+    const response = await this.client.get<any>(`/admin/users/${id}/`)
+    return response.data.data || response.data
+  }
+
+  async activateUser(id: string): Promise<User> {
+    const response = await this.client.post<any>(`/admin/users/${id}/activate/`, {})
+    return response.data.data || response.data
+  }
+
+  async deactivateUser(id: string, reason?: string): Promise<User> {
+    const response = await this.client.post<any>(`/admin/users/${id}/deactivate/`, {
+      reason: reason || '',
+    })
+    return response.data.data || response.data
+  }
+
+  // ===== Admin: Dashboard Stats =====
+  async getAdminDashboardStats(): Promise<any> {
+    const response = await this.client.get<any>('/admin/stats/dashboard/')
+    return response.data.data || response.data
+  }
+
+  // ===== Admin: Bookings =====
+  async getAdminBookings(
+    status?: string,
+    payment_status?: string,
+    search?: string,
+    page: number = 1,
+    page_size: number = 20
+  ): Promise<PaginatedResponse<any>> {
+    const params = new URLSearchParams()
+    if (status) params.append('status', status)
+    if (payment_status) params.append('payment_status', payment_status)
+    if (search) params.append('search', search)
+    params.append('page', String(page))
+    params.append('page_size', String(page_size))
+
+    const response = await this.client.get<any>(
+      `/bookings/?${params.toString()}`
+    )
+    return {
+      ...response.data,
+      results: response.data.results || [],
+    }
+  }
 }
 
 export const api = new ApiClient()

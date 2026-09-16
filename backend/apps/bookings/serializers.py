@@ -172,3 +172,29 @@ class AvailabilityResponseSerializer(serializers.Serializer):
     room_type_id = serializers.UUIDField()
     check_in_date = serializers.DateField()
     check_out_date = serializers.DateField()
+
+
+class AdminBookingListSerializer(serializers.ModelSerializer):
+    """Serializer for admin booking list view with owner details"""
+    property_name = serializers.CharField(source='property.name', read_only=True)
+    property_owner = serializers.CharField(source='property.owner.get_full_name', read_only=True)
+    property_owner_email = serializers.CharField(source='property.owner.email', read_only=True)
+    room_type_name = serializers.CharField(source='room_type.name', read_only=True)
+    guest_name = serializers.SerializerMethodField()
+    guest_email = serializers.CharField(source='guest.email', read_only=True)
+
+    class Meta:
+        model = Booking
+        fields = [
+            'id', 'booking_reference', 'property_name', 'property_owner', 'property_owner_email',
+            'room_type_name', 'guest_name', 'guest_email', 'check_in_date', 'check_out_date',
+            'number_of_nights', 'total_price', 'status', 'payment_status', 'created_at'
+        ]
+        read_only_fields = fields
+
+    def get_guest_name(self, obj):
+        """Get primary guest name"""
+        primary_guest = obj.guests.filter(is_primary_guest=True).first()
+        if primary_guest:
+            return f"{primary_guest.first_name} {primary_guest.last_name}"
+        return obj.guest.get_full_name() or obj.guest.email

@@ -38,6 +38,7 @@ export default function AdminLayout({
   const router = useRouter()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const isAdmin = Boolean(user?.is_staff || user?.is_superuser || user?.roles?.includes('super_admin'))
 
   useEffect(() => {
     setMounted(true)
@@ -48,10 +49,10 @@ export default function AdminLayout({
       router.push('/login')
     }
     // Check if user is super admin
-    if (mounted && !isLoading && isAuthenticated && !user?.roles?.includes('super_admin')) {
+    if (mounted && !isLoading && isAuthenticated && !isAdmin) {
       router.push('/')
     }
-  }, [isAuthenticated, isLoading, mounted, user, router])
+  }, [isAuthenticated, isLoading, mounted, isAdmin, router])
 
   if (!mounted || isLoading) {
     return (
@@ -61,7 +62,7 @@ export default function AdminLayout({
     )
   }
 
-  if (!isAuthenticated || !user?.roles?.includes('super_admin')) {
+  if (!isAuthenticated || !isAdmin) {
     return null
   }
 
