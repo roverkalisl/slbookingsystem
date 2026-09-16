@@ -155,6 +155,38 @@ class PropertyViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Validate that property has at least one room type
+        if not property_obj.room_types.exists():
+            return Response(
+                {
+                    'error': 'Property must have at least one room type before submission',
+                    'detail': 'Please add at least one room type to your property'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate required fields
+        missing_fields = []
+        if not property_obj.name:
+            missing_fields.append('name')
+        if not property_obj.description:
+            missing_fields.append('description')
+        if not property_obj.address:
+            missing_fields.append('address')
+        if not property_obj.city:
+            missing_fields.append('city')
+        if not property_obj.district:
+            missing_fields.append('district')
+
+        if missing_fields:
+            return Response(
+                {
+                    'error': f'Missing required fields: {", ".join(missing_fields)}',
+                    'detail': f'Please fill in all required fields before submission'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         property_obj.status = 'pending_approval'
         property_obj.submitted_at = now()
         property_obj.save()

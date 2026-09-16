@@ -188,6 +188,44 @@ class PropertyAmenity(models.Model):
 
 class RoomType(models.Model):
     """Room types within a property"""
+    ROOM_TYPE_CHOICES = [
+        ('bedroom', 'Bedroom'),
+        ('living_room', 'Living Room'),
+        ('studio', 'Studio'),
+        ('suite', 'Suite'),
+        ('dormitory', 'Dormitory'),
+        ('bungalow', 'Bungalow'),
+        ('villa', 'Villa'),
+    ]
+
+    BED_CONFIGURATION_CHOICES = [
+        ('single', 'Single'),
+        ('double', 'Double'),
+        ('queen', 'Queen'),
+        ('king', 'King'),
+        ('twin', 'Twin'),
+        ('bunk', 'Bunk'),
+        ('futon', 'Futon'),
+        ('mixed', 'Mixed'),
+    ]
+
+    BATHROOM_TYPE_CHOICES = [
+        ('private', 'Private'),
+        ('en-suite', 'En-Suite'),
+        ('shared', 'Shared'),
+        ('ensuite_partial', 'Ensuite Partial'),
+    ]
+
+    VIEW_TYPE_CHOICES = [
+        ('ocean_view', 'Ocean View'),
+        ('mountain_view', 'Mountain View'),
+        ('garden_view', 'Garden View'),
+        ('city_view', 'City View'),
+        ('pool_view', 'Pool View'),
+        ('balcony', 'Balcony'),
+        ('terrace', 'Terrace'),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='room_types')
 
@@ -195,20 +233,30 @@ class RoomType(models.Model):
     slug = models.SlugField()
     description = models.TextField(blank=True, null=True)
 
+    # Room classification
+    room_type = models.CharField(max_length=50, choices=ROOM_TYPE_CHOICES, default='bedroom')
+
     # Occupancy
     max_adults = models.IntegerField(default=2)
     max_children = models.IntegerField(default=0)
     total_occupancy = models.IntegerField(default=2)
 
     # Bed configuration
-    bed_type = models.CharField(max_length=50, blank=True, null=True)
+    bed_configuration = models.CharField(max_length=50, choices=BED_CONFIGURATION_CHOICES, default='double')
     number_of_beds = models.IntegerField(default=1)
 
-    # Inventory
-    total_rooms = models.IntegerField(default=1)
+    # Bathroom
+    bathroom_type = models.CharField(max_length=50, choices=BATHROOM_TYPE_CHOICES, default='private')
 
-    # Physical
-    room_size_sqm = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
+    # Physical properties
+    room_size_sqft = models.IntegerField(blank=True, null=True, help_text="Room size in square feet")
+    view_type = models.CharField(max_length=50, choices=VIEW_TYPE_CHOICES, blank=True, null=True)
+
+    # Inventory
+    total_rooms = models.IntegerField(default=1, help_text="Number of identical rooms available for booking")
+
+    # Amenities (M2M relationship)
+    amenities = models.ManyToManyField(Amenity, through='RoomTypeAmenity', blank=True)
 
     # Status
     is_active = models.BooleanField(default=True)

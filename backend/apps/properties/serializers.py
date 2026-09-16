@@ -90,6 +90,25 @@ class RoomTypeAmenitySerializer(serializers.Serializer):
     category = serializers.CharField(source='amenity.category', read_only=True)
 
 
+class RoomTypeCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating room types (accepts room data from frontend)"""
+    amenity_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Amenity.objects.all(),
+        many=True,
+        write_only=True,
+        required=False,
+        source='amenities'
+    )
+
+    class Meta:
+        model = RoomType
+        fields = [
+            'name', 'description', 'room_type', 'max_adults', 'max_children',
+            'bed_configuration', 'bathroom_type', 'number_of_beds', 'total_rooms',
+            'room_size_sqft', 'view_type', 'amenity_ids'
+        ]
+
+
 class RoomTypeListSerializer(serializers.ModelSerializer):
     """Serializer for room type list view"""
     amenities = serializers.SerializerMethodField()
@@ -98,14 +117,14 @@ class RoomTypeListSerializer(serializers.ModelSerializer):
     class Meta:
         model = RoomType
         fields = [
-            'id', 'name', 'slug', 'description', 'max_adults', 'max_children',
-            'total_occupancy', 'bed_type', 'number_of_beds', 'total_rooms',
-            'room_size_sqm', 'is_active', 'amenities', 'photos', 'created_at'
+            'id', 'name', 'slug', 'description', 'room_type', 'max_adults', 'max_children',
+            'total_occupancy', 'bed_configuration', 'bathroom_type', 'number_of_beds', 'total_rooms',
+            'room_size_sqft', 'view_type', 'is_active', 'amenities', 'photos', 'created_at'
         ]
         read_only_fields = ['id', 'slug', 'created_at']
 
     def get_amenities(self, obj):
-        amenities = obj.roomatype.all()
+        amenities = obj.roomatypeamenity_set.all()
         return RoomTypeAmenitySerializer(amenities, many=True).data
 
 
@@ -117,10 +136,10 @@ class RoomTypeDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = RoomType
         fields = [
-            'id', 'property', 'name', 'slug', 'description',
+            'id', 'property', 'name', 'slug', 'description', 'room_type',
             'max_adults', 'max_children', 'total_occupancy',
-            'bed_type', 'number_of_beds', 'total_rooms', 'room_size_sqm',
-            'is_active', 'amenities', 'photos', 'created_at', 'updated_at'
+            'bed_configuration', 'bathroom_type', 'number_of_beds', 'total_rooms', 'room_size_sqft',
+            'view_type', 'is_active', 'amenities', 'photos', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'slug', 'created_at', 'updated_at']
 
@@ -208,54 +227,89 @@ class PropertyCreateUpdateSerializer(serializers.ModelSerializer):
         required=False,
         source='amenities'
     )
+    room_types = RoomTypeCreateSerializer(many=True, write_only=True, required=False)
 
     class Meta:
         model = Property
         fields = [
-            'property_type', 'name', 'description', 'short_description',
+            'id', 'property_type', 'name', 'description', 'short_description',
             'address', 'city', 'district', 'province', 'postal_code',
             'latitude', 'longitude', 'google_maps_url', 'nearby_attractions',
-            'house_rules', 'cover_photo_url', 'amenity_ids', 'status'
+            'house_rules', 'cover_photo_url', 'amenity_ids', 'room_types', 'status'
         ]
-        read_only_fields = ['status']
+        read_only_fields = ['id', 'status']
 
     def create(self, validated_data):
-        # Extract amenities (M2M) from validated data
+        from django.db import transaction
+
+        # Extract M2M and nested data
         amenities = validated_data.pop('amenities', [])
+        room_types_data = validated_data.pop('room_types', [])
 
         # Get current user from request context
         request = self.context.get('request')
         if request:
             validated_data['owner'] = request.user
 
-        # Create property
-        property_obj = Property.objects.create(**validated_data)
+        # Create property and room types within transaction
+        with transaction.atomic():
+            # Create property
+            property_obj = Property.objects.create(**validated_data)
 
-        # Add amenities
-        if amenities:
-            PropertyAmenity.objects.bulk_create([
-                PropertyAmenity(property=property_obj, amenity=amenity)
-                for amenity in amenities
-            ])
+            # Add amenities
+            if amenities:
+                PropertyAmenity.objects.bulk_create([
+                    PropertyAmenity(property=property_obj, amenity=amenity)
+                    for amenity in amenities
+                ])
+
+            # Create room types
+            for room_data in room_types_data:
+                room_amenities = room_data.pop('amenities', [])
+                room_obj = RoomType.objects.create(property=property_obj, **room_data)
+
+                # Add room amenities
+                if room_amenities:
+                    RoomTypeAmenity.objects.bulk_create([
+                        RoomTypeAmenity(room_type=room_obj, amenity=amenity)
+                        for amenity in room_amenities
+                    ])
 
         return property_obj
 
     def update(self, instance, validated_data):
-        # Extract amenities (M2M) from validated data
+        from django.db import transaction
+
+        # Extract M2M and nested data
         amenities = validated_data.pop('amenities', None)
+        room_types_data = validated_data.pop('room_types', None)
 
-        # Update property fields
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
+        with transaction.atomic():
+            # Update property fields
+            for attr, value in validated_data.items():
+                setattr(instance, attr, value)
+            instance.save()
 
-        # Update amenities if provided
-        if amenities is not None:
-            instance.propertyamenity_set.all().delete()
-            PropertyAmenity.objects.bulk_create([
-                PropertyAmenity(property=instance, amenity=amenity)
-                for amenity in amenities
-            ])
+            # Update amenities if provided
+            if amenities is not None:
+                instance.propertyamenity_set.all().delete()
+                PropertyAmenity.objects.bulk_create([
+                    PropertyAmenity(property=instance, amenity=amenity)
+                    for amenity in amenities
+                ])
+
+            # Update room types if provided
+            if room_types_data is not None:
+                instance.room_types.all().delete()
+                for room_data in room_types_data:
+                    room_amenities = room_data.pop('amenities', [])
+                    room_obj = RoomType.objects.create(property=instance, **room_data)
+
+                    if room_amenities:
+                        RoomTypeAmenity.objects.bulk_create([
+                            RoomTypeAmenity(room_type=room_obj, amenity=amenity)
+                            for amenity in room_amenities
+                        ])
 
         return instance
 

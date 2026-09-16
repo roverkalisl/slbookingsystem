@@ -263,6 +263,20 @@ export default function PropertyWizard() {
         ...data,
         property_type: data.property_type === '' ? null : data.property_type,
         status: 'draft',
+        room_types: rooms.map(room => ({
+          name: room.name,
+          description: room.description,
+          room_type: room.room_type,
+          max_adults: room.max_adults,
+          max_children: room.max_children,
+          bed_configuration: room.bed_configuration,
+          bathroom_type: room.bathroom_type,
+          number_of_beds: room.number_of_beds,
+          total_rooms: room.total_rooms,
+          room_size_sqft: room.room_size,
+          view_type: room.view_type,
+          amenity_ids: [], // Room amenities will be handled separately if needed
+        })),
       }
 
       if (propertyId) {
@@ -303,6 +317,20 @@ export default function PropertyWizard() {
         ...data,
         property_type: data.property_type === '' ? null : data.property_type,
         status: 'draft',
+        room_types: rooms.map(room => ({
+          name: room.name,
+          description: room.description,
+          room_type: room.room_type,
+          max_adults: room.max_adults,
+          max_children: room.max_children,
+          bed_configuration: room.bed_configuration,
+          bathroom_type: room.bathroom_type,
+          number_of_beds: room.number_of_beds,
+          total_rooms: room.total_rooms,
+          room_size_sqft: room.room_size,
+          view_type: room.view_type,
+          amenity_ids: [], // Room amenities will be handled separately if needed
+        })),
       }
 
       // If we don't have a property ID yet, create it first
