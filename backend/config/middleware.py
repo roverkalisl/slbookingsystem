@@ -30,8 +30,8 @@ class CsrfExemptForJWTMiddleware:
         auth_header = request.META.get('HTTP_AUTHORIZATION', '')
 
         if auth_header.startswith('Bearer '):
-            # Mark request as CSRF-exempt for JWT-authenticated requests
-            request.csrf_exempt = True
+            # This is the attribute CsrfViewMiddleware actually checks to skip enforcement
+            request._dont_enforce_csrf_checks = True
             logger.debug(f"JWT token detected, exempting {request.method} {request.path} from CSRF")
 
         response = self.get_response(request)
