@@ -124,7 +124,7 @@ class RoomTypeListSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'slug', 'created_at']
 
     def get_amenities(self, obj):
-        amenities = obj.roomatypeamenity_set.all()
+        amenities = obj.roomtypeamenity_set.all()
         return RoomTypeAmenitySerializer(amenities, many=True).data
 
 
@@ -144,7 +144,7 @@ class RoomTypeDetailSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'slug', 'created_at', 'updated_at']
 
     def get_amenities(self, obj):
-        amenities = obj.roomatypeamenity_set.all()
+        amenities = obj.roomtypeamenity_set.all()
         return RoomTypeAmenitySerializer(amenities, many=True).data
 
 
@@ -456,7 +456,7 @@ class DestinationDetailSerializer(serializers.ModelSerializer):
     def get_properties(self, obj):
         """Get first 12 properties in destination"""
         properties = Property.objects.filter(
-            status='published',
+            status='approved',
             city=obj.city
         )[:12]
         return PropertyCardSerializer(properties, many=True).data
@@ -464,7 +464,7 @@ class DestinationDetailSerializer(serializers.ModelSerializer):
     def get_property_count(self, obj):
         """Count published properties in destination"""
         return Property.objects.filter(
-            status='published',
+            status='approved',
             city=obj.city
         ).count()
 

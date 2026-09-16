@@ -18,7 +18,7 @@ class PropertySearchService:
     def __init__(self, queryset=None):
         """Initialize search service with optional queryset"""
         if queryset is None:
-            queryset = Property.objects.filter(status='published')
+            queryset = Property.objects.filter(status='approved')
         self.queryset = queryset.select_related('property_type', 'owner')
 
     def filter_by_destination(self, city: str = None, district: str = None, province: str = None):
@@ -236,7 +236,7 @@ class DestinationSearchService:
         from .models import Destination
 
         destinations = Destination.objects.filter(is_published=True).annotate(
-            property_count=Count('property', filter=Q(property__status='published'))
+            property_count=Count('property', filter=Q(property__status='approved'))
         ).order_by('-property_count')[:limit]
 
         return destinations
@@ -264,7 +264,7 @@ class DestinationSearchService:
             destination = Destination.objects.get(slug=destination_slug, is_published=True)
 
             properties = Property.objects.filter(
-                status='published',
+                status='approved',
                 city=destination.city
             ).order_by('-created_at')
 

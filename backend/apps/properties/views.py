@@ -407,20 +407,20 @@ class RoomTypeViewSet(viewsets.ModelViewSet):
 
         if not user.is_authenticated:
             return RoomType.objects.filter(
-                property__status='published',
+                property__status='approved',
                 is_active=True
             )
 
         if user.has_role('property_owner'):
             return RoomType.objects.filter(
                 property__owner=user
-            ) | RoomType.objects.filter(property__status='published')
+            ) | RoomType.objects.filter(property__status='approved')
 
         if user.is_staff:
             return RoomType.objects.all()
 
         return RoomType.objects.filter(
-            property__status='published',
+            property__status='approved',
             is_active=True
         )
 
