@@ -15,6 +15,8 @@ export interface User {
   preferred_language?: string
   notification_email?: boolean
   notification_sms?: boolean
+  is_staff?: boolean
+  is_superuser?: boolean
   roles?: string[]
   created_at: string
   updated_at?: string

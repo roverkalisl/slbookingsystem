@@ -462,6 +462,81 @@ class ApiClient {
       results: response.data.results || [],
     }
   }
+
+  async getAdminBookingDetail(id: string): Promise<any> {
+    const response = await this.client.get<any>(`/admin/bookings/${id}/`)
+    return response.data.data || response.data
+  }
+
+  async updateAdminBookingStatus(id: string, status: string): Promise<any> {
+    const response = await this.client.patch<any>(`/admin/bookings/${id}/status/`, {
+      status,
+    })
+    return response.data.data || response.data
+  }
+
+  async cancelAdminBooking(id: string, reason?: string): Promise<any> {
+    const response = await this.client.post<any>(`/admin/bookings/${id}/cancel/`, {
+      reason: reason || 'admin_request',
+    })
+    return response.data.data || response.data
+  }
+
+  // ===== Admin: Payments =====
+  async getAdminPayments(
+    status?: string,
+    payment_method?: string,
+    search?: string,
+    page: number = 1,
+    page_size: number = 20
+  ): Promise<PaginatedResponse<any>> {
+    const params = new URLSearchParams()
+    if (status) params.append('status', status)
+    if (payment_method) params.append('payment_method', payment_method)
+    if (search) params.append('search', search)
+    params.append('page', String(page))
+    params.append('page_size', String(page_size))
+
+    const response = await this.client.get<any>(
+      `/admin/payments/?${params.toString()}`
+    )
+    return {
+      ...response.data,
+      results: response.data.results || [],
+    }
+  }
+
+  async getAdminPaymentDetail(id: string): Promise<any> {
+    const response = await this.client.get<any>(`/admin/payments/${id}/`)
+    return response.data.data || response.data
+  }
+
+  async requestAdminRefund(id: string, amount?: number, reason?: string): Promise<any> {
+    const response = await this.client.post<any>(`/admin/payments/${id}/request-refund/`, {
+      amount,
+      reason,
+    })
+    return response.data.data || response.data
+  }
+
+  async getAdminRefunds(
+    status?: string,
+    page: number = 1,
+    page_size: number = 20
+  ): Promise<PaginatedResponse<any>> {
+    const params = new URLSearchParams()
+    if (status) params.append('status', status)
+    params.append('page', String(page))
+    params.append('page_size', String(page_size))
+
+    const response = await this.client.get<any>(
+      `/admin/refunds/?${params.toString()}`
+    )
+    return {
+      ...response.data,
+      results: response.data.results || [],
+    }
+  }
 }
 
 export const api = new ApiClient()
