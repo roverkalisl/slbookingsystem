@@ -38,7 +38,13 @@ export default function AdminLayout({
   const router = useRouter()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
-  const isAdmin = Boolean(user?.is_staff || user?.is_superuser || user?.roles?.includes('super_admin'))
+  const isAdmin = Boolean(
+    user && (
+      (user as any).is_staff ||
+      (user as any).is_superuser ||
+      user.roles?.includes('super_admin')
+    )
+  )
 
   useEffect(() => {
     setMounted(true)
