@@ -82,28 +82,35 @@ class PropertyViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Get appropriate queryset based on user"""
         user = self.request.user
+        logger.debug(f"[VIEWSET] get_queryset called for user={user.id if user.is_authenticated else 'anonymous'}")
 
         # Unauthenticated users see approved properties only
         if not user.is_authenticated:
+            logger.debug(f"[VIEWSET] User unauthenticated, returning approved properties only")
             return Property.objects.filter(status='approved')
 
         # Guests see approved properties only
         if user.has_role('guest'):
+            logger.debug(f"[VIEWSET] User is guest, returning approved properties only")
             return Property.objects.filter(status='approved')
 
         # Property owners see:
         # - Their own properties (all statuses)
         # - Other owners' approved properties
         if user.has_role('property_owner'):
-            return Property.objects.filter(
+            queryset = Property.objects.filter(
                 owner=user
             ) | Property.objects.filter(status='approved')
+            logger.debug(f"[VIEWSET] User is property_owner, queryset count={queryset.count()}")
+            return queryset
 
         # Super admin sees everything
         if user.is_staff:
+            logger.debug(f"[VIEWSET] User is staff, returning all properties")
             return Property.objects.all()
 
         # Default: show only approved properties
+        logger.debug(f"[VIEWSET] Default: returning approved properties only")
         return Property.objects.filter(status='approved')
 
     def get_serializer_class(self):
@@ -129,20 +136,27 @@ class PropertyViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         """Update property (only owner can update DRAFT/REJECTED properties)"""
+        logger.info(f"[VIEWSET] perform_update called for pk={self.kwargs.get('pk')}")
+        logger.info(f"[VIEWSET] user={self.request.user.id if hasattr(self.request, 'user') else 'unknown'}")
+
         property_obj = self.get_object()
+        logger.info(f"[VIEWSET] get_object() returned property={property_obj.id}, owner={property_obj.owner.id}, status={property_obj.status}")
 
         # Check ownership
         if property_obj.owner != self.request.user and not self.request.user.is_staff:
+            logger.warning(f"[VIEWSET] Permission denied: owner mismatch")
             raise PermissionDenied("You can only edit your own properties.")
 
         # Owners can only edit DRAFT or REJECTED properties
         if not self.request.user.is_staff and property_obj.status not in ['draft', 'rejected']:
+            logger.warning(f"[VIEWSET] Permission denied: status not draft/rejected")
             raise PermissionDenied(
                 f"You can only edit properties in DRAFT or REJECTED status. "
                 f"Current status: {property_obj.status}. "
                 f"Contact support if you need to modify an approved property."
             )
 
+        logger.info(f"[VIEWSET] Update permitted, saving")
         serializer.save()
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])

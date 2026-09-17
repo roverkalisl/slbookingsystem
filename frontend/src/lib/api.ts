@@ -61,6 +61,11 @@ class ApiClient {
         if (this.token) {
           config.headers.Authorization = `Bearer ${this.token}`
         }
+        console.log('[API CLIENT INTERCEPTOR] Request:', {
+          method: config.method?.toUpperCase(),
+          url: config.url,
+          hasAuth: !!config.headers.Authorization,
+        })
         return config
       })
 
@@ -232,12 +237,26 @@ class ApiClient {
 
   async createProperty(data: any): Promise<Property> {
     const response = await this.client.post<any>('/properties/', data)
-    return this.normalizeProperty(response.data.data || response.data)
+    const responseData = response.data.data || response.data
+    console.log('[API CLIENT] createProperty response:', {
+      status: response.status,
+      hasData: !!responseData,
+      hasId: !!responseData?.id,
+      idValue: responseData?.id ? responseData.id.substring(0, 8) + '...' : 'null',
+      responseStructure: Object.keys(responseData || {}).slice(0, 5),
+    })
+    return this.normalizeProperty(responseData)
   }
 
   async updateProperty(id: string, data: any): Promise<Property> {
+    console.log('[API CLIENT] updateProperty called with ID:', id.substring(0, 8) + '...')
     const response = await this.client.put<any>(`/properties/${id}/`, data)
-    return this.normalizeProperty(response.data.data || response.data)
+    const responseData = response.data.data || response.data
+    console.log('[API CLIENT] updateProperty response:', {
+      status: response.status,
+      hasData: !!responseData,
+    })
+    return this.normalizeProperty(responseData)
   }
 
   async deleteProperty(id: string): Promise<void> {
