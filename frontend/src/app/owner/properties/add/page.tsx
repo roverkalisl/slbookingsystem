@@ -299,6 +299,14 @@ export default function PropertyWizard() {
       setSavingDraft(true)
       setError(null)
 
+      console.log('[PROPERTY WIZARD] saveDraft called', {
+        step: currentStep,
+        hasPropertyId: !!propertyId,
+        propertyIdPrefix: propertyId ? propertyId.substring(0, 8) + '...' : 'null',
+        hasRooms: rooms.length > 0,
+        roomCount: rooms.length,
+      })
+
       const propertyData = {
         ...data,
         property_type: data.property_type === '' ? null : data.property_type,
@@ -321,11 +329,22 @@ export default function PropertyWizard() {
 
       if (propertyId) {
         // Update existing property
+        console.log('[PROPERTY WIZARD] Updating property', {
+          propertyIdPrefix: propertyId.substring(0, 8) + '...',
+          method: 'PUT',
+        })
         await api.updateProperty(propertyId, propertyData)
+        console.log('[PROPERTY WIZARD] Update succeeded')
         setSuccess('Draft saved successfully!')
       } else {
         // Create new property
+        console.log('[PROPERTY WIZARD] Creating property', {
+          method: 'POST',
+        })
         const response = await api.createProperty(propertyData)
+        console.log('[PROPERTY WIZARD] Create succeeded', {
+          newPropertyIdPrefix: response.id.substring(0, 8) + '...',
+        })
         setPropertyId(response.id)
         setSuccess('Property created! Draft saved.')
       }
@@ -333,8 +352,13 @@ export default function PropertyWizard() {
       setTimeout(() => setSuccess(null), 3000)
     } catch (err: any) {
       const errorMsg = getErrorMessage(err)
+      console.error('[PROPERTY WIZARD] Save draft error:', {
+        step: currentStep,
+        hasPropertyId: !!propertyId,
+        status: err.response?.status,
+        errorMsg,
+      })
       setError(errorMsg)
-      console.error('Save draft error:', err)
     } finally {
       setSavingDraft(false)
     }
@@ -352,6 +376,11 @@ export default function PropertyWizard() {
         setLoading(false)
         return
       }
+
+      console.log('[PROPERTY WIZARD] onSubmit called', {
+        hasPropertyId: !!propertyId,
+        propertyIdPrefix: propertyId ? propertyId.substring(0, 8) + '...' : 'null',
+      })
 
       const propertyData = {
         ...data,
@@ -375,7 +404,11 @@ export default function PropertyWizard() {
 
       // If we don't have a property ID yet, create it first
       if (!propertyId) {
+        console.log('[PROPERTY WIZARD] Creating new property before submit')
         const newProperty = await api.createProperty(propertyData)
+        console.log('[PROPERTY WIZARD] New property created, submitting for approval', {
+          propertyIdPrefix: newProperty.id.substring(0, 8) + '...',
+        })
         setPropertyId(newProperty.id)
 
         // Then submit for approval
@@ -387,7 +420,11 @@ export default function PropertyWizard() {
         }, 1500)
       } else {
         // Update and submit
+        console.log('[PROPERTY WIZARD] Updating and submitting existing property', {
+          propertyIdPrefix: propertyId.substring(0, 8) + '...',
+        })
         await api.updateProperty(propertyId, propertyData)
+        console.log('[PROPERTY WIZARD] Property updated, submitting for approval')
         await api.submitPropertyForApproval(propertyId)
         setSuccess('Property submitted for approval!')
 
@@ -399,8 +436,12 @@ export default function PropertyWizard() {
       // Use the improved error message extraction
       const errorMsg = getErrorMessage(err)
         .replace('Failed to save draft', 'Failed to submit property')
+      console.error('[PROPERTY WIZARD] Submit error:', {
+        hasPropertyId: !!propertyId,
+        status: err.response?.status,
+        errorMsg,
+      })
       setError(errorMsg)
-      console.error('Submit error:', err)
     } finally {
       setLoading(false)
     }
@@ -448,7 +489,10 @@ export default function PropertyWizard() {
               {STEPS.map((step) => (
                 <button
                   key={step.number}
-                  onClick={() => setCurrentStep(step.number)}
+                  onClick={() => {
+                    setError(null)
+                    setCurrentStep(step.number)
+                  }}
                   className={`w-full text-left p-3 rounded-lg transition-colors ${
                     currentStep === step.number
                       ? 'bg-blue-100 border-l-4 border-blue-600'
@@ -622,7 +666,10 @@ export default function PropertyWizard() {
                 {currentStep > 1 && (
                   <button
                     type="button"
-                    onClick={() => setCurrentStep(currentStep - 1)}
+                    onClick={() => {
+                      setError(null)
+                      setCurrentStep(currentStep - 1)
+                    }}
                     className="flex items-center gap-2 px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                   >
                     <ChevronLeft className="w-5 h-5" />
@@ -658,7 +705,10 @@ export default function PropertyWizard() {
                 {currentStep < STEPS.length ? (
                   <button
                     type="button"
-                    onClick={() => setCurrentStep(currentStep + 1)}
+                    onClick={() => {
+                      setError(null)
+                      setCurrentStep(currentStep + 1)
+                    }}
                     className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                   >
                     Next
