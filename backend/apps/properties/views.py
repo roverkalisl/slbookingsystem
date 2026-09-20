@@ -388,7 +388,30 @@ class PropertyViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK
         )
 
-    @action(detail=True, methods=['get'])
+    @photos.mapping.post
+    def add_photo(self, request, pk=None):
+        """Add one owner-managed property photo, capped at five."""
+        property_obj = self.get_object()
+        if property_obj.owner != request.user and not request.user.is_staff:
+            raise PermissionDenied("You can only add photos to your own properties.")
+        if property_obj.photos.count() >= 5:
+            return Response({'error': 'A property can have at most 5 main photos.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        cloudinary_url = request.data.get('cloudinary_url')
+        cloudinary_public_id = request.data.get('cloudinary_public_id')
+        if not cloudinary_url or not cloudinary_public_id:
+            return Response({'error': 'cloudinary_url and cloudinary_public_id are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        photo = PropertyPhoto.objects.create(
+            property=property_obj,
+            cloudinary_url=cloudinary_url,
+            cloudinary_public_id=cloudinary_public_id,
+            display_order=property_obj.photos.count(),
+            is_cover=not property_obj.photos.exists(),
+        )
+        return Response({'success': True, 'data': PropertyPhotoSerializer(photo).data}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get', 'post'])
     def rooms(self, request, pk=None):
         """
         Get all room types for a property.
@@ -396,6 +419,14 @@ class PropertyViewSet(viewsets.ModelViewSet):
         GET /api/properties/{id}/rooms/
         """
         property_obj = self.get_object()
+        if request.method == 'POST':
+            if property_obj.owner != request.user and not request.user.is_staff:
+                raise PermissionDenied("You can only add rooms to your own properties.")
+            serializer = RoomTypeCreateSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            room = RoomType.objects.create(property=property_obj, **serializer.validated_data)
+            return Response({'success': True, 'data': RoomTypeDetailSerializer(room).data}, status=status.HTTP_201_CREATED)
+
         rooms = property_obj.room_types.all()
         serializer = RoomTypeListSerializer(rooms, many=True)
         return Response(

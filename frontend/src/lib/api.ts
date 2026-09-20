@@ -250,7 +250,7 @@ class ApiClient {
 
   async updateProperty(id: string, data: any): Promise<Property> {
     console.log('[API CLIENT] updateProperty called with ID:', id.substring(0, 8) + '...')
-    const response = await this.client.put<any>(`/properties/${id}/`, data)
+    const response = await this.client.patch<any>(`/properties/${id}/`, data)
     const responseData = response.data.data || response.data
     console.log('[API CLIENT] updateProperty response:', {
       status: response.status,
@@ -261,6 +261,16 @@ class ApiClient {
 
   async deleteProperty(id: string): Promise<void> {
     await this.client.delete(`/properties/${id}/`)
+  }
+
+  async getPropertyRooms(id: string): Promise<any[]> {
+    const response = await this.client.get<any>(`/properties/${id}/rooms/`)
+    return response.data.data || response.data
+  }
+
+  async createRoom(propertyId: string, data: Record<string, unknown>): Promise<any> {
+    const response = await this.client.post<any>(`/properties/${propertyId}/rooms/`, data)
+    return response.data.data || response.data
   }
 
   async submitPropertyForApproval(id: string): Promise<Property> {

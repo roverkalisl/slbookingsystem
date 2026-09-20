@@ -227,7 +227,8 @@ class PropertyCreateUpdateSerializer(serializers.ModelSerializer):
         required=False,
         source='amenities'
     )
-    room_types = RoomTypeCreateSerializer(many=True, write_only=True, required=False)
+    contact_phone = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    contact_email = serializers.EmailField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model = Property
@@ -235,9 +236,16 @@ class PropertyCreateUpdateSerializer(serializers.ModelSerializer):
             'id', 'property_type', 'name', 'description', 'short_description',
             'address', 'city', 'district', 'province', 'postal_code',
             'latitude', 'longitude', 'google_maps_url', 'nearby_attractions',
-            'house_rules', 'cover_photo_url', 'amenity_ids', 'room_types', 'status'
+            'house_rules', 'cover_photo_url', 'amenity_ids', 'contact_phone', 'contact_email', 'status'
         ]
         read_only_fields = ['id', 'status']
+
+    def validate(self, attrs):
+        if 'room_types' in self.initial_data:
+            raise serializers.ValidationError({
+                'room_types': 'Rooms must be created from the property room management endpoint.'
+            })
+        return attrs
 
     def create(self, validated_data):
         import logging
@@ -245,9 +253,10 @@ class PropertyCreateUpdateSerializer(serializers.ModelSerializer):
 
         logger = logging.getLogger(__name__)
 
-        # Extract M2M and nested data
+        # Property creation is intentionally independent from room management.
         amenities = validated_data.pop('amenities', [])
-        room_types_data = validated_data.pop('room_types', [])
+        contact_phone = validated_data.pop('contact_phone', '')
+        contact_email = validated_data.pop('contact_email', '')
 
         # Get current user from request context
         request = self.context.get('request')
@@ -264,7 +273,7 @@ class PropertyCreateUpdateSerializer(serializers.ModelSerializer):
         if not validated_data.get('province'):
             raise serializers.ValidationError({'province': 'Province is required'})
 
-        # Create property and room types within transaction
+        # Create the draft and its property-level relationships atomically.
         try:
             with transaction.atomic():
                 # Create property
@@ -279,25 +288,12 @@ class PropertyCreateUpdateSerializer(serializers.ModelSerializer):
                     ])
                     logger.info(f"Added {len(amenities)} amenities to property {property_obj.id}")
 
-                # Create room types
-                for idx, room_data in enumerate(room_types_data):
-                    try:
-                        room_amenities = room_data.pop('amenities', [])
-                        logger.info(f"Creating room {idx+1} with data: {room_data}")
-                        room_obj = RoomType.objects.create(property=property_obj, **room_data)
-                        logger.info(f"Created room type {room_obj.id} for property {property_obj.id}")
-
-                        # Add room amenities
-                        if room_amenities:
-                            RoomTypeAmenity.objects.bulk_create([
-                                RoomTypeAmenity(room_type=room_obj, amenity=amenity)
-                                for amenity in room_amenities
-                            ])
-                    except Exception as e:
-                        logger.error(f"Error creating room type: {str(e)}", exc_info=True)
-                        raise serializers.ValidationError({
-                            'room_types': f'Error creating room: {str(e)}'
-                        })
+                if contact_phone or contact_email:
+                    PropertyContact.objects.create(
+                        property=property_obj,
+                        contact_phone=contact_phone,
+                        email=contact_email,
+                    )
 
         except Exception as e:
             logger.error(f"Error in property creation transaction: {str(e)}", exc_info=True)
@@ -310,9 +306,10 @@ class PropertyCreateUpdateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         from django.db import transaction
 
-        # Extract M2M and nested data
+        # Room data is never accepted during a property update.
         amenities = validated_data.pop('amenities', None)
-        room_types_data = validated_data.pop('room_types', None)
+        contact_phone = validated_data.pop('contact_phone', None)
+        contact_email = validated_data.pop('contact_email', None)
 
         with transaction.atomic():
             # Update property fields
@@ -328,18 +325,13 @@ class PropertyCreateUpdateSerializer(serializers.ModelSerializer):
                     for amenity in amenities
                 ])
 
-            # Update room types if provided
-            if room_types_data is not None:
-                instance.room_types.all().delete()
-                for room_data in room_types_data:
-                    room_amenities = room_data.pop('amenities', [])
-                    room_obj = RoomType.objects.create(property=instance, **room_data)
-
-                    if room_amenities:
-                        RoomTypeAmenity.objects.bulk_create([
-                            RoomTypeAmenity(room_type=room_obj, amenity=amenity)
-                            for amenity in room_amenities
-                        ])
+            if contact_phone is not None or contact_email is not None:
+                contact, _ = PropertyContact.objects.get_or_create(property=instance)
+                if contact_phone is not None:
+                    contact.contact_phone = contact_phone
+                if contact_email is not None:
+                    contact.email = contact_email
+                contact.save()
 
         return instance
 

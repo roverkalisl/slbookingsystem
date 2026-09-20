@@ -1,0 +1,14 @@
+'use client'
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { api } from '@/lib/api'
+
+export default function AddRoomClient({ propertyId }: { propertyId: string }) {
+  const router = useRouter()
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [form, setForm] = useState({ name: '', description: '', room_type: 'bedroom', max_adults: 2, max_children: 0, bed_configuration: 'double', bathroom_type: 'private', number_of_beds: 1, total_rooms: 1, view_type: '' })
+  const update = (field: string, value: string | number) => setForm(current => ({ ...current, [field]: value }))
+  const submit = async (event: React.FormEvent) => { event.preventDefault(); setSaving(true); setError(null); try { await api.createRoom(propertyId, form); router.push(`/owner/properties/${propertyId}/rooms`) } catch (requestError: any) { setError(requestError.response?.data?.detail || requestError.response?.data?.error || 'Unable to save room.') } finally { setSaving(false) } }
+  return <div className="mx-auto max-w-3xl"><h1 className="mb-8 text-4xl font-bold text-gray-900">Add room</h1>{error && <div className="mb-5 rounded-lg border border-red-200 bg-red-50 p-4 text-red-800">{error}</div>}<form onSubmit={submit} className="space-y-5 rounded-lg bg-white p-6 shadow">{[['name', 'Room name'], ['description', 'Description'], ['max_adults', 'Maximum adults'], ['max_children', 'Maximum children'], ['number_of_beds', 'Number of beds'], ['total_rooms', 'Number of rooms']].map(([field, label]) => <label key={field} className="block">{label}<input required={field === 'name'} type={field === 'description' || field === 'name' ? 'text' : 'number'} value={form[field as keyof typeof form]} onChange={event => update(field, field === 'description' || field === 'name' ? event.target.value : Number(event.target.value))} className="form-input" /></label>)}<label className="block">Room type<select value={form.room_type} onChange={event => update('room_type', event.target.value)} className="form-input"><option value="bedroom">Bedroom</option><option value="suite">Suite</option><option value="studio">Studio</option><option value="villa">Villa</option></select></label><label className="block">Bed type<select value={form.bed_configuration} onChange={event => update('bed_configuration', event.target.value)} className="form-input"><option value="single">Single</option><option value="double">Double</option><option value="queen">Queen</option><option value="king">King</option><option value="twin">Twin</option></select></label><button disabled={saving} className="rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white disabled:opacity-50">{saving ? 'Saving...' : 'Save room'}</button></form><style jsx>{`.form-input { margin-top: .35rem; display: block; width: 100%; border: 1px solid #d1d5db; border-radius: .5rem; padding: .65rem .75rem; }`}</style></div>
+}
