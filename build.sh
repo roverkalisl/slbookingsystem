@@ -96,6 +96,7 @@ REQUIRED_FILES=(
     "owner/dashboard.html"
     "owner/properties.html"
     "owner/properties/add.html"
+    "owner/properties/manage.html"
     "admin/dashboard.html"
     "admin/properties.html"
 )
