@@ -268,6 +268,14 @@ class ApiClient {
     return response.data.data || response.data
   }
 
+  async deletePropertyPhoto(propertyId: string, photoId: string): Promise<void> {
+    await this.client.delete(`/properties/${propertyId}/delete-photo/?photo_id=${photoId}`)
+  }
+
+  async deleteRoomPhoto(roomId: string, photoId: string): Promise<void> {
+    await this.client.delete(`/properties/rooms/${roomId}/delete-photo/?photo_id=${photoId}`)
+  }
+
   async createRoom(propertyId: string, data: Record<string, unknown>): Promise<any> {
     const response = await this.client.post<any>(`/properties/${propertyId}/rooms/`, data)
     return response.data.data || response.data
