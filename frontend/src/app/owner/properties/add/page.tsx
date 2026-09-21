@@ -66,7 +66,7 @@ export default function AddPropertyPage() {
       if (!saved.id) throw new Error('The backend did not return a property ID.')
       setPropertyId(saved.id)
       setMessage('Property saved successfully. Status: DRAFT')
-      window.setTimeout(() => router.push(`/owner/properties/${saved.id}`), 700)
+      window.setTimeout(() => router.push(`/owner/properties/manage?propertyId=${encodeURIComponent(saved.id)}`), 700)
     } catch (saveError: any) {
       console.error('[PROPERTY DRAFT]', saveError)
       setError(errorMessage(saveError))
