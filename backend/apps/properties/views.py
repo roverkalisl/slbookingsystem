@@ -411,6 +411,28 @@ class PropertyViewSet(viewsets.ModelViewSet):
         )
         return Response({'success': True, 'data': PropertyPhotoSerializer(photo).data}, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['delete'])
+    def delete_photo(self, request, photo_id=None, pk=None):
+        """
+        Delete a property photo.
+
+        DELETE /api/properties/{property_id}/delete-photo/?photo_id=<photo_id>
+        """
+        property_obj = self.get_object()
+        if property_obj.owner != request.user and not request.user.is_staff:
+            raise PermissionDenied("You can only delete photos from your own properties.")
+
+        photo_id = request.query_params.get('photo_id') or self.kwargs.get('photo_id')
+        if not photo_id:
+            return Response({'error': 'photo_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            photo = PropertyPhoto.objects.get(id=photo_id, property=property_obj)
+            photo.delete()
+            return Response({'success': True, 'message': 'Photo deleted successfully'}, status=status.HTTP_200_OK)
+        except PropertyPhoto.DoesNotExist:
+            return Response({'error': 'Photo not found'}, status=status.HTTP_404_NOT_FOUND)
+
     @action(detail=True, methods=['get', 'post'])
     def rooms(self, request, pk=None):
         """
@@ -535,6 +557,28 @@ class RoomTypeViewSet(viewsets.ModelViewSet):
             },
             status=status.HTTP_201_CREATED
         )
+
+    @action(detail=True, methods=['delete'])
+    def delete_photo(self, request, pk=None):
+        """
+        Delete a room type photo.
+
+        DELETE /api/properties/rooms/{room_id}/delete-photo/?photo_id=<photo_id>
+        """
+        room_type = self.get_object()
+        if room_type.property.owner != request.user and not request.user.is_staff:
+            raise PermissionDenied("You can only delete photos from your own rooms.")
+
+        photo_id = request.query_params.get('photo_id')
+        if not photo_id:
+            return Response({'error': 'photo_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            photo = RoomTypePhoto.objects.get(id=photo_id, room_type=room_type)
+            photo.delete()
+            return Response({'success': True, 'message': 'Photo deleted successfully'}, status=status.HTTP_200_OK)
+        except RoomTypePhoto.DoesNotExist:
+            return Response({'error': 'Photo not found'}, status=status.HTTP_404_NOT_FOUND)
 
     @action(detail=True, methods=['get', 'post'], permission_classes=[permissions.IsAuthenticated])
     def pricing(self, request, pk=None):
