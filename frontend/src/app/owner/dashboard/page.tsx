@@ -215,7 +215,7 @@ export default function OwnerDashboard() {
                         </div>
                       </div>
                       <Link
-                        href={`/owner/properties/${property.id}`}
+                        href={`/owner/properties/manage?propertyId=${encodeURIComponent(property.id)}`}
                         className="text-blue-600 hover:text-blue-700 text-sm font-medium"
                       >
                         Manage →
