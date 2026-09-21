@@ -137,25 +137,66 @@ export default function PropertyManagementClient({ propertyId }: { propertyId: s
           {/* Rooms Tab */}
           {activeTab === 'rooms' && (
             <section className="rounded-lg bg-white p-6 shadow">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mb-6">
                 <div>
                   <h2 className="text-xl font-semibold">Room Types</h2>
-                  <p className="mt-2 text-sm text-gray-600">{property.room_types?.length || 0} room types configured</p>
+                  <p className="mt-2 text-sm text-gray-600">{property.room_types?.length || 0} room type(s) configured</p>
                 </div>
-                <Link href={`/owner/properties/${propertyId}/rooms`} className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
-                  Manage Rooms
-                </Link>
+                <div className="flex gap-2">
+                  <Link
+                    href={`/owner/properties/rooms?propertyId=${encodeURIComponent(propertyId)}`}
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 font-medium"
+                  >
+                    Manage Rooms
+                  </Link>
+                  <Link
+                    href={`/owner/properties/rooms/add?propertyId=${encodeURIComponent(propertyId)}`}
+                    className="rounded-lg bg-green-600 px-4 py-2 text-white hover:bg-green-700 font-medium"
+                  >
+                    + Add Room
+                  </Link>
+                </div>
               </div>
-              {property.room_types && property.room_types.length > 0 && (
-                <div className="mt-4 space-y-2">
+
+              {property.room_types && property.room_types.length > 0 ? (
+                <div className="space-y-3">
                   {property.room_types.map((room: any) => (
-                    <div key={room.id} className="rounded border border-gray-200 p-3">
-                      <h3 className="font-semibold">{room.name}</h3>
-                      <p className="text-sm text-gray-600">{room.room_type} • {room.max_adults} adults max</p>
+                    <div key={room.id} className="rounded-lg border border-gray-200 p-4 hover:border-blue-300 transition-colors">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-lg text-gray-900">{room.name}</h3>
+                          <p className="text-sm text-gray-600 mt-1">
+                            {room.room_type} • {room.max_adults} adults, {room.max_children || 0} children
+                          </p>
+                          <p className="text-xs text-gray-500 mt-2">
+                            {room.number_of_beds} bed(s) • {room.total_rooms} unit(s) • {room.room_size_sqft || '?'} sqft
+                          </p>
+                        </div>
+                        <Link
+                          href={`/owner/properties/rooms/photos?propertyId=${encodeURIComponent(propertyId)}&roomId=${room.id}`}
+                          className="px-3 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                        >
+                          Photos
+                        </Link>
+                      </div>
                     </div>
                   ))}
                 </div>
+              ) : (
+                <div className="rounded-lg bg-gray-50 p-6 text-center text-gray-600">
+                  <p className="mb-3">No rooms configured yet.</p>
+                  <Link
+                    href={`/owner/properties/rooms/add?propertyId=${encodeURIComponent(propertyId)}`}
+                    className="inline-block bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium"
+                  >
+                    Add Your First Room
+                  </Link>
+                </div>
               )}
+
+              <p className="mt-6 text-xs text-gray-500 bg-blue-50 p-3 rounded">
+                💡 Each room type can have separate photos (unlimited per room). Room photos are distinct from the 5 property cover photos above.
+              </p>
             </section>
           )}
 
