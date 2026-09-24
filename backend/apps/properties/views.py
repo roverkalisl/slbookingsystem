@@ -8,6 +8,7 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now
 from django.conf import settings
@@ -16,6 +17,11 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 import cloudinary.utils
 
 logger = logging.getLogger(__name__)
+
+# Room photo rule: each room needs 1-5 photos (minimum checked at submission,
+# maximum enforced on upload). Property photos have their own rules below.
+ROOM_PHOTOS_MIN = 1
+ROOM_PHOTOS_MAX = 5
 
 from .models import (
     PropertyType, Amenity, Destination, Property, PropertyPhoto,
@@ -200,10 +206,11 @@ class PropertyViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("You can only delete your own properties.")
         instance.delete()
 
-    # Minimum photos required before a property can be submitted for approval.
-    # These are MINIMUMS only - there is no product maximum (see MAX_PROPERTY_PHOTOS).
+    # Photos required before a property can be submitted for approval.
+    # Property photos: minimum 5, no product maximum (see MAX_PROPERTY_PHOTOS).
+    # Room photos: 1-5 per room (ROOM_PHOTOS_MIN / ROOM_PHOTOS_MAX).
     MIN_PROPERTY_PHOTOS = 5
-    MIN_ROOM_PHOTOS = 5
+    MIN_ROOM_PHOTOS = ROOM_PHOTOS_MIN
 
     def _submission_errors(self, property_obj: Property) -> list:
         """
@@ -239,12 +246,11 @@ class PropertyViewSet(viewsets.ModelViewSet):
             errors.append("Property must have at least one active room type.")
 
         for room in rooms:
-            room_photo_count = len(room.photos.all())
-            if room_photo_count < self.MIN_ROOM_PHOTOS:
-                errors.append(
-                    f"Room '{room.name}' must have at least {self.MIN_ROOM_PHOTOS} photos "
-                    f"(currently {room_photo_count})."
-                )
+            # Minimum only: rooms that already have more than ROOM_PHOTOS_MAX
+            # (uploaded before the cap existed) are still valid - existing
+            # photos are never deleted automatically.
+            if len(room.photos.all()) < self.MIN_ROOM_PHOTOS:
+                errors.append(f"Room '{room.name}' must have at least 1 photo.")
 
             pricing = getattr(room, 'pricing', None)
             if pricing is None or not pricing.base_price or pricing.base_price <= 0:
@@ -680,8 +686,8 @@ class RoomTypeViewSet(viewsets.ModelViewSet):
             "display_order": 1
         }
 
-        Room photos have no maximum - unlimited per room, unlike property
-        photos which are capped at MAX_PROPERTY_PHOTOS for abuse prevention.
+        Each room can have 1-5 photos: at most ROOM_PHOTOS_MAX, enforced here
+        server-side (a 6th photo is rejected with 400).
         """
         room_type = self.get_object()
 
@@ -700,13 +706,23 @@ class RoomTypeViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        photo = RoomTypePhoto.objects.create(
-            room_type=room_type,
-            cloudinary_url=cloudinary_url,
-            cloudinary_public_id=cloudinary_public_id,
-            is_cover=is_cover,
-            display_order=display_order
-        )
+        with transaction.atomic():
+            # Lock the room so two concurrent uploads can't both pass the cap.
+            RoomType.objects.select_for_update().get(pk=room_type.pk)
+            if room_type.photos.count() >= ROOM_PHOTOS_MAX:
+                return Response(
+                    {'error': f'A room can have at most {ROOM_PHOTOS_MAX} photos. '
+                              f'Delete a photo before uploading another.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            photo = RoomTypePhoto.objects.create(
+                room_type=room_type,
+                cloudinary_url=cloudinary_url,
+                cloudinary_public_id=cloudinary_public_id,
+                is_cover=is_cover,
+                display_order=display_order
+            )
 
         return Response(
             {

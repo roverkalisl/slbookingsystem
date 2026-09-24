@@ -299,7 +299,7 @@ export default function PropertyManagementClient({ propertyId }: { propertyId: s
               )}
 
               <p className="mt-6 text-xs text-gray-500 bg-blue-50 p-3 rounded">
-                💡 Each room type can have separate photos (unlimited per room). Room photos are distinct from the property photos above.
+                💡 Each room type needs its own 1–5 photos. Room photos are distinct from the property photos above.
               </p>
             </section>
           )}
@@ -333,7 +333,7 @@ export default function PropertyManagementClient({ propertyId }: { propertyId: s
                   <li>✓ Property details complete</li>
                   <li>{photos.length >= 5 ? '✓' : '✗'} At least 5 property photos ({photos.length} uploaded)</li>
                   <li>{property.room_types?.length > 0 ? '✓' : '✗'} At least 1 room type</li>
-                  <li>• Every room has at least 5 photos and pricing configured</li>
+                  <li>• Every room has 1–5 photos and pricing configured</li>
                 </ul>
               </div>
               {submitErrors && (

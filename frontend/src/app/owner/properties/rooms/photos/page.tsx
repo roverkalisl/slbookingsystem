@@ -12,6 +12,9 @@ interface RoomPhoto {
 }
 
 const MAX_PHOTO_SIZE_MB = 10
+// Each room needs 1-5 photos (the backend enforces the maximum on upload
+// and the minimum at submit-for-approval).
+const MAX_ROOM_PHOTOS = 5
 const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 export default function RoomPhotosPage() {
@@ -90,6 +93,17 @@ export default function RoomPhotosPage() {
       setPhotoError(`"${tooBig.name}" is larger than ${MAX_PHOTO_SIZE_MB}MB.`)
       return
     }
+    // Max 5 per room (the backend enforces this too - this just avoids a
+    // partial upload). Nothing is uploaded if the selection doesn't fit.
+    const remaining = MAX_ROOM_PHOTOS - photos.length
+    if (files.length > remaining) {
+      setPhotoError(
+        remaining > 0
+          ? `A room can have at most ${MAX_ROOM_PHOTOS} photos. You can add ${remaining} more - you selected ${files.length}.`
+          : `This room already has ${MAX_ROOM_PHOTOS} photos. Delete a photo before uploading another.`
+      )
+      return
+    }
 
     setUploading(true)
     setUploadProgress({ done: 0, total: files.length })
@@ -112,9 +126,10 @@ export default function RoomPhotosPage() {
       }
       setPhotoSuccess(`${uploadedCount} photo(s) uploaded successfully.`)
     } catch (err: any) {
+      const reason = err.response?.data?.error || err.message || 'upload failed'
       setPhotoError(
         uploadedCount > 0
-          ? `Uploaded ${uploadedCount} of ${files.length} photo(s) before an error: ${err.message || 'upload failed'}`
+          ? `Uploaded ${uploadedCount} of ${files.length} photo(s) before an error: ${reason}`
           : (err.response?.data?.error || err.message || 'Upload failed. Please try again.')
       )
     } finally {
@@ -122,6 +137,8 @@ export default function RoomPhotosPage() {
       setUploadProgress(null)
     }
   }
+
+  const roomIsFull = photos.length >= MAX_ROOM_PHOTOS
 
   if (loading) return <div className="flex items-center justify-center min-h-screen"><p className="text-gray-600">Loading...</p></div>
 
@@ -143,22 +160,32 @@ export default function RoomPhotosPage() {
 
       <section className="rounded-lg bg-white p-6 shadow">
         <h2 className="text-xl font-semibold">Photos for {room?.name}</h2>
-        <p className="mt-2 text-sm text-gray-600">{photos.length} photo(s) uploaded (unlimited)</p>
+        <p className="mt-2 text-sm text-gray-600">
+          Upload 1–{MAX_ROOM_PHOTOS} room photos · <span className="font-semibold">{photos.length} / {MAX_ROOM_PHOTOS} photos</span>
+        </p>
 
         {photoError && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-red-800">{photoError}</div>}
         {photoSuccess && <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3 text-green-800">{photoSuccess}</div>}
 
-        <label className="mt-6 flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
+        <label
+          className={`mt-6 flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 p-8 text-center transition-colors ${
+            roomIsFull ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:border-blue-400 hover:bg-blue-50'
+          }`}
+        >
           <input
             type="file"
             accept="image/jpeg,image/png,image/webp"
             multiple
             className="hidden"
-            disabled={uploading}
-            onChange={(e) => handleUploadPhotos(e.target.files)}
+            disabled={uploading || roomIsFull}
+            onChange={(e) => { handleUploadPhotos(e.target.files); e.target.value = '' }}
           />
           {uploading ? (
             <p className="text-sm text-gray-600">Uploading {uploadProgress?.done ?? 0} of {uploadProgress?.total ?? 0}...</p>
+          ) : roomIsFull ? (
+            <p className="font-medium text-gray-700">
+              Maximum of {MAX_ROOM_PHOTOS} photos reached - delete a photo to upload another.
+            </p>
           ) : (
             <>
               <p className="font-medium text-gray-700">Click to upload room photos</p>
@@ -189,7 +216,7 @@ export default function RoomPhotosPage() {
         )}
 
         <p className="mt-6 text-sm text-gray-500">
-          Room photos are separate from property photos. Each room can have unlimited photos.
+          Room photos are separate from property photos. Each room needs 1–{MAX_ROOM_PHOTOS} photos.
         </p>
       </section>
     </div>

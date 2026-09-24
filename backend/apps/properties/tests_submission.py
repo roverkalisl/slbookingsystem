@@ -1,10 +1,11 @@
 """
-Tests for submit-for-approval requirements and photo minimums (not maximums).
+Tests for submit-for-approval requirements and photo rules.
 
 A property may be saved as an incomplete draft, but can only be submitted for
-admin approval once it has complete details, at least 5 property photos, at
-least one active room, and every active room has at least 5 photos, pricing
-and bookable inventory.
+admin approval once it has complete details, at least 5 property photos (no
+maximum of 5), at least one active room, and every active room has 1-5 photos
+(minimum 1 at submission, maximum 5 enforced on upload), pricing and bookable
+inventory.
 
 Run with: python manage.py test apps.properties.tests_submission
 """
@@ -39,7 +40,7 @@ class SubmitForApprovalTestCase(APITestCase):
         Pricing.objects.create(room_type=self.room, base_price=Decimal('12000.00'))
 
         self.add_property_photos(5)
-        self.add_room_photos(self.room, 5)
+        self.add_room_photos(self.room, 1)  # the minimum - so a complete property uses just 1 room photo
 
     def add_property_photos(self, count):
         start = self.property.photos.count()
@@ -93,25 +94,41 @@ class SubmitForApprovalTestCase(APITestCase):
 
     # --- Room photos -----------------------------------------------------
 
-    def test_room_with_fewer_than_5_photos_is_rejected(self):
-        self.room.photos.first().delete()
-        self.assert_rejected_with(self.submit(), "Room 'Deluxe Room' must have at least 5 photos")
+    def test_room_with_0_photos_is_rejected(self):
+        self.room.photos.all().delete()
+        response = self.submit()
+        self.assert_rejected_with(response, "Room 'Deluxe Room' must have at least 1 photo.")
 
-    def test_room_with_exactly_5_photos_is_accepted(self):
-        self.assertEqual(self.room.photos.count(), 5)
+    def test_room_with_1_to_5_photos_is_accepted(self):
+        for count in range(1, 6):
+            with self.subTest(room_photos=count):
+                self.add_room_photos(self.room, count - self.room.photos.count())
+                self.assertEqual(self.room.photos.count(), count)
+                Property.objects.filter(id=self.property.id).update(status='draft', submitted_at=None)
+                self.assert_submitted(self.submit())
+
+    def test_room_with_existing_photos_above_5_is_still_valid_and_untouched(self):
+        """Rooms that got more than 5 photos before the cap existed are not
+        rejected, and their photos are never deleted automatically."""
+        self.add_room_photos(self.room, 6)  # 7 total, created directly (pre-cap data)
+        ids_before = set(self.room.photos.values_list('id', flat=True))
         self.assert_submitted(self.submit())
+        self.assertEqual(set(self.room.photos.values_list('id', flat=True)), ids_before)
 
-    def test_room_with_more_than_5_photos_is_accepted(self):
-        self.add_room_photos(self.room, 6)
-        self.assert_submitted(self.submit())
-
-    def test_every_active_room_needs_5_photos(self):
+    def test_every_active_room_needs_at_least_1_photo(self):
         second_room = RoomType.objects.create(
             property=self.property, name='Garden Suite', max_adults=2, total_occupancy=2, total_rooms=1
         )
         Pricing.objects.create(room_type=second_room, base_price=Decimal('15000.00'))
-        self.add_room_photos(second_room, 2)
-        self.assert_rejected_with(self.submit(), "Room 'Garden Suite' must have at least 5 photos")
+        self.assert_rejected_with(self.submit(), "Room 'Garden Suite' must have at least 1 photo.")
+
+        self.add_room_photos(second_room, 1)
+        self.assert_submitted(self.submit())
+
+    def test_property_photo_minimum_is_unchanged(self):
+        """This change is room-only: properties still need at least 5 photos."""
+        self.property.photos.first().delete()
+        self.assert_rejected_with(self.submit(), 'Property must have at least 5 photos')
 
     def test_inactive_room_is_not_required_to_be_complete(self):
         RoomType.objects.create(
@@ -191,7 +208,7 @@ class SubmitForApprovalTestCase(APITestCase):
 
 
 class DraftAndPhotoLimitTestCase(APITestCase):
-    """Drafts stay saveable while incomplete; photo counts have no maximum of 5."""
+    """Drafts stay saveable while incomplete; rooms accept at most 5 photos (server-side)."""
 
     def setUp(self):
         owner_role, _ = Role.objects.get_or_create(name='property_owner')
@@ -214,23 +231,75 @@ class DraftAndPhotoLimitTestCase(APITestCase):
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(Property.objects.get(name='Unfinished Apartment').status, 'draft')
 
-    def test_room_accepts_more_than_5_photos_via_api(self):
+    def make_room(self, name='Studio'):
         property_obj = Property.objects.create(
-            owner=self.owner, property_type=self.property_type, name='Photo Apartment',
+            owner=self.owner, property_type=self.property_type, name=f'{name} Apartment',
             description='desc', city='Colombo', district='Colombo', province='Western', status='draft',
         )
-        room = RoomType.objects.create(
-            property=property_obj, name='Studio', max_adults=2, total_occupancy=2, total_rooms=1
+        return RoomType.objects.create(
+            property=property_obj, name=name, max_adults=2, total_occupancy=2, total_rooms=1
         )
 
-        for index in range(10):
-            response = self.client.post(f'/api/properties/rooms/{room.id}/add-photo/', {
-                'cloudinary_url': f'https://res.cloudinary.com/demo/studio-{index}.jpg',
-                'cloudinary_public_id': f'studio-{index}',
+    def upload(self, room, label):
+        return self.client.post(f'/api/properties/rooms/{room.id}/add-photo/', {
+            'cloudinary_url': f'https://res.cloudinary.com/demo/{label}.jpg',
+            'cloudinary_public_id': label,
+        }, format='json')
+
+    def test_room_accepts_1_to_5_photos_via_api(self):
+        room = self.make_room()
+        for index in range(5):
+            response = self.upload(room, f'studio-{index}')
+            self.assertEqual(response.status_code, 201, response.data)
+            self.assertEqual(room.photos.count(), index + 1)
+
+    def test_sixth_room_photo_is_rejected_and_existing_photos_kept(self):
+        room = self.make_room()
+        for index in range(5):
+            self.upload(room, f'studio-{index}')
+        ids_before = set(room.photos.values_list('id', flat=True))
+
+        response = self.upload(room, 'studio-6th')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('at most 5 photos', response.data['error'])
+        self.assertEqual(room.photos.count(), 5)
+        self.assertEqual(set(room.photos.values_list('id', flat=True)), ids_before)  # nothing deleted
+        self.assertFalse(RoomTypePhoto.objects.filter(cloudinary_public_id='studio-6th').exists())
+
+    def test_upload_allowed_again_after_deleting_a_photo(self):
+        room = self.make_room()
+        for index in range(5):
+            self.upload(room, f'studio-{index}')
+        photo = room.photos.first()
+        self.assertEqual(self.client.delete(f'/api/properties/rooms/{room.id}/delete-photo/?photo_id={photo.id}').status_code, 200)
+        self.assertEqual(self.upload(room, 'studio-replacement').status_code, 201)
+        self.assertEqual(room.photos.count(), 5)
+
+    def test_room_with_legacy_photos_above_5_rejects_uploads_but_keeps_photos(self):
+        room = self.make_room()
+        for index in range(7):  # created before the cap existed
+            RoomTypePhoto.objects.create(room_type=room, cloudinary_url=f'https://res.cloudinary.com/demo/l{index}.jpg',
+                                         cloudinary_public_id=f'legacy-{index}')
+        self.assertEqual(self.upload(room, 'legacy-new').status_code, 400)
+        self.assertEqual(room.photos.count(), 7)
+
+    def test_limit_is_per_room(self):
+        full_room = self.make_room('Full')
+        for index in range(5):
+            self.upload(full_room, f'full-{index}')
+        other_room = self.make_room('Empty')
+        self.assertEqual(self.upload(other_room, 'other-0').status_code, 201)
+
+    def test_property_photos_still_have_no_maximum_of_5(self):
+        """Room-only change: the 6th+ PROPERTY photo is still accepted."""
+        property_obj = self.make_room('PropPhotos').property
+        for index in range(7):
+            response = self.client.post(f'/api/properties/{property_obj.id}/photos/', {
+                'cloudinary_url': f'https://res.cloudinary.com/demo/prop-{index}.jpg',
+                'cloudinary_public_id': f'prop-{index}',
             }, format='json')
             self.assertEqual(response.status_code, 201, response.data)
-
-        self.assertEqual(room.photos.count(), 10)
+        self.assertEqual(property_obj.photos.count(), 7)
 
     def test_photo_delete_urls_used_by_frontend_are_routed(self):
         """lib/api.ts calls the hyphenated delete-photo URLs for properties and rooms."""

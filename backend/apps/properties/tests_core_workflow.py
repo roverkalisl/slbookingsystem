@@ -110,11 +110,13 @@ class CoreWorkflowEndToEndTestCase(APITestCase):
         self.assertEqual(room.property_id, prop.id)
         self.assertEqual(room.total_occupancy, 5)  # derived from 4 adults + 1 child
 
-        # --- 4. Room photos: 6 ---
-        for i in range(6):
+        # --- 4. Room photos: 1-5 allowed; the 6th is rejected server-side ---
+        for i in range(5):
             r = owner.post(f'/api/properties/rooms/{room.id}/add-photo/', self.photo(f'r{i}'), format='json')
             self.assertEqual(r.status_code, 201, r.data)
-        self.assertEqual(room.photos.count(), 6)
+        r = owner.post(f'/api/properties/rooms/{room.id}/add-photo/', self.photo('r-sixth'), format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(room.photos.count(), 5)
 
         # Pricing still missing -> submit refused
         r = owner.post(f'/api/properties/{property_id}/submit-for-approval/')
@@ -160,7 +162,7 @@ class CoreWorkflowEndToEndTestCase(APITestCase):
         detail = detail.get('data', detail)
         self.assertEqual(len(detail['photos']), 7)
         self.assertEqual(len(detail['room_types']), 1)
-        self.assertEqual(len(detail['room_types'][0]['photos']), 6)
+        self.assertEqual(len(detail['room_types'][0]['photos']), 5)
         self.assertEqual(Decimal(str(detail['room_types'][0]['pricing']['base_price'])), Decimal('10000.00'))
         self.assertEqual(admin.post(f'/api/properties/{property_id}/approve/').status_code, 200)
         prop.refresh_from_db()
@@ -182,7 +184,7 @@ class CoreWorkflowEndToEndTestCase(APITestCase):
         page = page.get('data', page)
         self.assertEqual(len(page['photos']), 7)
         self.assertEqual(len(page['amenities']), 2)
-        self.assertEqual(len(page['room_types'][0]['photos']), 6)
+        self.assertEqual(len(page['room_types'][0]['photos']), 5)
         self.assertEqual(Decimal(str(page['room_types'][0]['pricing']['base_price'])), Decimal('10000.00'))
 
         # --- 10. Guest price + availability + booking (2 rooms, 2 weekday nights) ---
