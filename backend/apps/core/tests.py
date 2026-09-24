@@ -69,9 +69,16 @@ class UserRoleTestCase(TestCase):
     """Tests for Role and UserRole"""
 
     def setUp(self):
-        """Set up test data"""
-        self.guest_role = Role.objects.create(name='guest')
-        self.owner_role = Role.objects.create(name='property_owner')
+        """Set up test data.
+
+        get_or_create, not create: CoreConfig._initialize_defaults (apps.py)
+        seeds 'guest'/'property_owner'/etc. via a post_migrate signal that
+        runs once when the test database is built, before any test's
+        transaction starts. A plain .create() here always collides with
+        that already-existing row with a UNIQUE constraint error.
+        """
+        self.guest_role, _ = Role.objects.get_or_create(name='guest')
+        self.owner_role, _ = Role.objects.get_or_create(name='property_owner')
 
         self.user = User.objects.create_user(
             email='guest@example.com',
@@ -126,8 +133,8 @@ class PermissionTestCase(TestCase):
             description='Can write property details'
         )
 
-        self.guest_role = Role.objects.create(name='guest')
-        self.owner_role = Role.objects.create(name='property_owner')
+        self.guest_role, _ = Role.objects.get_or_create(name='guest')
+        self.owner_role, _ = Role.objects.get_or_create(name='property_owner')
 
     def test_permission_creation(self):
         """Test permission creation"""
@@ -148,7 +155,9 @@ class PermissionTestCase(TestCase):
         RolePermission.objects.create(role=self.owner_role, permission=self.write_perm)
         RolePermission.objects.create(role=self.owner_role, permission=self.read_perm)
 
-        perms = self.owner_role.permissions.all()
+        # RolePermission declares no related_name, so Role's reverse accessor
+        # is the Django default 'rolepermission_set', not 'permissions'.
+        perms = Permission.objects.filter(rolepermission__role=self.owner_role)
 
         self.assertEqual(perms.count(), 2)
 
@@ -156,7 +165,7 @@ class PermissionTestCase(TestCase):
         """Test guest has limited permissions"""
         RolePermission.objects.create(role=self.guest_role, permission=self.read_perm)
 
-        perms = self.guest_role.permissions.all()
+        perms = Permission.objects.filter(rolepermission__role=self.guest_role)
 
         self.assertEqual(perms.count(), 1)
         self.assertNotIn(self.write_perm, perms)
@@ -185,8 +194,9 @@ class AuthenticationAPITestCase(TestCase):
         response = self.client.post(self.register_url, data)
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn('user', response.data)
-        self.assertEqual(response.data['user']['email'], 'newuser@example.com')
+        # Response is wrapped: {'success': True, 'data': {...}, 'message': ...}
+        self.assertIn('user', response.data['data'])
+        self.assertEqual(response.data['data']['user']['email'], 'newuser@example.com')
 
     def test_registration_password_mismatch(self):
         """Test registration with mismatched passwords"""
@@ -216,8 +226,9 @@ class AuthenticationAPITestCase(TestCase):
         response = self.client.post(self.login_url, data)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
+        # Response is wrapped: {'success': True, 'data': {...}, 'message': ...}
+        self.assertIn('access', response.data['data'])
+        self.assertIn('refresh', response.data['data'])
 
     def test_login_invalid_credentials(self):
         """Test login with invalid credentials"""
@@ -242,7 +253,8 @@ class AuthenticationAPITestCase(TestCase):
         response = self.client.get(self.me_url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['email'], 'current@example.com')
+        # Response is wrapped: {'success': True, 'data': {...}}
+        self.assertEqual(response.data['data']['email'], 'current@example.com')
 
 
 class PasswordManagementTestCase(TestCase):
@@ -324,12 +336,13 @@ class UserSerializerTestCase(TestCase):
             'email': 'register@example.com',
             'password': 'testpass123',
             'password_confirm': 'testpass123',
-            'first_name': 'Register'
+            'first_name': 'Register',
+            'last_name': 'User',  # required=True on RegisterSerializer
         }
 
         serializer = RegisterSerializer(data=data)
 
-        self.assertTrue(serializer.is_valid())
+        self.assertTrue(serializer.is_valid(), serializer.errors)
 
     def test_register_serializer_duplicate_email(self):
         """Test register serializer rejects duplicate email"""

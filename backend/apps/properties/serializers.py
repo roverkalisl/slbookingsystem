@@ -2,6 +2,8 @@
 Serializers for property management.
 """
 
+from decimal import Decimal
+
 from rest_framework import serializers
 from django.db import models
 from .models import (
@@ -103,29 +105,54 @@ class RoomTypeCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = RoomType
         fields = [
-            'name', 'description', 'room_type', 'max_adults', 'max_children',
+            'name', 'description', 'room_type', 'max_adults', 'max_children', 'total_occupancy',
             'bed_configuration', 'bathroom_type', 'number_of_beds', 'total_rooms',
             'room_size_sqft', 'view_type', 'amenity_ids'
         ]
+        extra_kwargs = {
+            'max_adults': {'min_value': 1},
+            'max_children': {'min_value': 0},
+            'total_occupancy': {'required': False, 'min_value': 1},
+            'total_rooms': {'min_value': 1},
+            'number_of_beds': {'min_value': 1},
+        }
+
+    def validate(self, attrs):
+        # The add-room form collects max adults/children but not a separate
+        # occupancy. Without this, total_occupancy silently stayed at the
+        # model default of 2 - so a 4-adult room could only ever take 2 guests.
+        if attrs.get('total_occupancy') is None:
+            attrs['total_occupancy'] = attrs.get('max_adults', 2) + attrs.get('max_children', 0)
+        return attrs
 
 
 class RoomTypeListSerializer(serializers.ModelSerializer):
     """Serializer for room type list view"""
     amenities = serializers.SerializerMethodField()
     photos = RoomTypePhotoSerializer(many=True, read_only=True)
+    pricing = serializers.SerializerMethodField()
 
     class Meta:
         model = RoomType
         fields = [
             'id', 'name', 'slug', 'description', 'room_type', 'max_adults', 'max_children',
             'total_occupancy', 'bed_configuration', 'bathroom_type', 'number_of_beds', 'total_rooms',
-            'room_size_sqft', 'view_type', 'is_active', 'amenities', 'photos', 'created_at'
+            'room_size_sqft', 'view_type', 'is_active', 'amenities', 'photos', 'pricing', 'created_at'
         ]
         read_only_fields = ['id', 'slug', 'created_at']
 
     def get_amenities(self, obj):
         amenities = obj.roomtypeamenity_set.all()
         return RoomTypeAmenitySerializer(amenities, many=True).data
+
+    def get_pricing(self, obj):
+        # OneToOneField - accessing obj.pricing directly raises
+        # RelatedObjectDoesNotExist when a room type has no pricing row yet
+        # (e.g. a brand-new room the owner hasn't priced). Guard with getattr.
+        pricing = getattr(obj, 'pricing', None)
+        if pricing is None:
+            return None
+        return PricingSerializer(pricing).data
 
 
 class RoomTypeDetailSerializer(serializers.ModelSerializer):
@@ -153,6 +180,7 @@ class PropertyListSerializer(serializers.ModelSerializer):
     property_type_name = serializers.CharField(source='property_type.name', read_only=True)
     amenities = serializers.SerializerMethodField()
     photo_count = serializers.SerializerMethodField()
+    owner_info = serializers.SerializerMethodField()
 
     class Meta:
         model = Property
@@ -160,13 +188,21 @@ class PropertyListSerializer(serializers.ModelSerializer):
             'id', 'name', 'slug', 'short_description', 'city', 'district',
             'status', 'submitted_at', 'rejection_reason', 'house_rules',
             'cover_photo_url', 'property_type_name', 'average_rating',
-            'total_reviews', 'amenities', 'photo_count', 'created_at', 'published_at'
+            'total_reviews', 'amenities', 'photo_count', 'owner_info', 'created_at', 'published_at'
         ]
         read_only_fields = ['id', 'slug', 'created_at', 'published_at', 'submitted_at']
 
     def get_amenities(self, obj):
         amenities = obj.propertyamenity_set.all()[:5]  # Show first 5
         return [{'name': pa.amenity.name, 'slug': pa.amenity.slug} for pa in amenities]
+
+    def get_owner_info(self, obj):
+        """Owner contact for the admin review queue - staff only (this list is
+        also public for approved properties, so never expose it to others)."""
+        request = self.context.get('request')
+        if request is None or not request.user.is_authenticated or not request.user.is_staff:
+            return None
+        return {'email': obj.owner.email, 'first_name': obj.owner.first_name, 'last_name': obj.owner.last_name}
 
     def get_photo_count(self, obj):
         return obj.photos.count()
@@ -182,6 +218,7 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
     owner_name = serializers.SerializerMethodField()
     contact = PropertyContactSerializer(read_only=True)
     reviewed_by_name = serializers.CharField(source='reviewed_by.get_full_name', read_only=True, allow_null=True)
+    min_price = serializers.SerializerMethodField()
 
     class Meta:
         model = Property
@@ -192,7 +229,7 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
             'latitude', 'longitude', 'google_maps_url', 'nearby_attractions',
             'status', 'submitted_at', 'reviewed_at', 'reviewed_by', 'reviewed_by_name',
             'rejection_reason', 'house_rules', 'cover_photo_url', 'average_rating', 'total_reviews',
-            'amenities', 'photos', 'room_types', 'contact',
+            'amenities', 'photos', 'room_types', 'contact', 'min_price',
             'created_at', 'updated_at', 'published_at'
         ]
         read_only_fields = [
@@ -200,6 +237,17 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at', 'published_at', 'submitted_at', 'reviewed_at',
             'reviewed_by', 'reviewed_by_name'
         ]
+
+    def get_min_price(self, obj):
+        """
+        Real starting-from price, computed the same way as
+        PropertyCardSerializer.get_min_price (search results) - the lowest
+        base_price across this property's room types. Property itself has no
+        price_range_min/max fields; those don't exist on the model and
+        shouldn't be invented just to satisfy the frontend.
+        """
+        min_price = obj.room_types.aggregate(min=models.Min('pricing__base_price'))['min']
+        return str(min_price) if min_price else None
 
     def get_amenities(self, obj):
         amenities = obj.propertyamenity_set.all()
@@ -370,6 +418,26 @@ class PricingSerializer(serializers.ModelSerializer):
             'currency', 'seasonal_rates', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class PricingUpdateSerializer(serializers.Serializer):
+    """
+    Owner input for POST /api/properties/rooms/{id}/pricing/.
+
+    Only owner-controlled prices are accepted; the platform's
+    service_fee_percent / tax_percent / currency are never client input.
+    base_price is required the first time pricing is created.
+    """
+    base_price = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal('0.01'), required=False)
+    weekend_price = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal('0.01'), required=False, allow_null=True
+    )
+    extra_guest_fee = serializers.DecimalField(
+        max_digits=10, decimal_places=2, min_value=Decimal('0'), required=False, allow_null=True
+    )
+    child_fee = serializers.DecimalField(
+        max_digits=10, decimal_places=2, min_value=Decimal('0'), required=False, allow_null=True
+    )
 
 
 class PropertyCardSerializer(serializers.ModelSerializer):

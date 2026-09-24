@@ -24,11 +24,16 @@ interface PropertyFormData {
   house_rules: string
 }
 
-const propertyTypes = [
-  { id: 1, name: 'Villa' }, { id: 2, name: 'Hotel' }, { id: 3, name: 'Guest House' },
-  { id: 4, name: 'Apartment' }, { id: 5, name: 'Resort' }, { id: 6, name: 'Other' },
-]
-const amenities = ['WiFi', 'Swimming Pool', 'Parking', 'Air Conditioning', 'Kitchen', 'Breakfast', 'Restaurant', 'Garden', 'Beach Access', 'Hot Water', 'TV', 'Washing Machine', 'Airport Transfer', 'BBQ', 'Private Pool']
+interface PropertyType {
+  id: number
+  name: string
+}
+
+interface Amenity {
+  id: number
+  name: string
+  category: string | null
+}
 
 function errorMessage(error: any) {
   const status = error.response?.status
@@ -48,6 +53,10 @@ export default function AddPropertyPage() {
   const router = useRouter()
   const [propertyId, setPropertyId] = useState<string | null>(null)
   const [selectedAmenities, setSelectedAmenities] = useState<number[]>([])
+  const [propertyTypes, setPropertyTypes] = useState<PropertyType[]>([])
+  const [amenities, setAmenities] = useState<Amenity[]>([])
+  const [loadingOptions, setLoadingOptions] = useState(true)
+  const [optionsError, setOptionsError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -56,6 +65,20 @@ export default function AddPropertyPage() {
   useEffect(() => {
     const draftId = new URLSearchParams(window.location.search).get('propertyId')
     if (draftId) setPropertyId(draftId)
+  }, [])
+
+  useEffect(() => {
+    Promise.all([api.getPropertyTypes(), api.getAmenities()])
+      .then(([types, amenityList]) => {
+        setPropertyTypes(types)
+        setAmenities(amenityList)
+        setOptionsError(null)
+      })
+      .catch((err: any) => {
+        console.error('[PROPERTY OPTIONS]', err)
+        setOptionsError('Unable to load property types and amenities. Please refresh the page.')
+      })
+      .finally(() => setLoadingOptions(false))
   }, [])
 
   const saveDraft = async (data: PropertyFormData) => {
@@ -77,18 +100,19 @@ export default function AddPropertyPage() {
     <div className="mx-auto max-w-5xl">
       <div className="mb-8"><p className="text-sm font-semibold uppercase tracking-wide text-blue-700">Property details</p><h1 className="mt-2 text-4xl font-bold text-gray-900">Create property</h1><p className="mt-2 text-gray-600">Save the property as a draft first. Rooms, photos, pricing, and approval are managed afterwards.</p></div>
       {error && <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-red-800">{error}</div>}
+      {optionsError && <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-red-800">{optionsError}</div>}
       {message && <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-4 text-green-800">{message}</div>}
       <form onSubmit={handleSubmit(saveDraft)} className="space-y-6">
         <section className="rounded-lg bg-white p-6 shadow"><h2 className="mb-5 text-xl font-semibold">Basic property information</h2><div className="grid gap-4 md:grid-cols-2">
           <label className="md:col-span-2">Property name *<input {...register('name', { required: 'Property name is required' })} className="form-input" />{errors.name && <small className="text-red-600">{errors.name.message}</small>}</label>
-          <label>Property type *<select {...register('property_type', { required: 'Property type is required', valueAsNumber: true })} className="form-input"><option value="">Select type</option>{propertyTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}</select></label>
+          <label>Property type *<select {...register('property_type', { required: 'Property type is required', valueAsNumber: true })} className="form-input" disabled={loadingOptions}><option value="">{loadingOptions ? 'Loading...' : 'Select type'}</option>{propertyTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}</select>{errors.property_type && <small className="text-red-600">{errors.property_type.message}</small>}</label>
           <label>Contact phone<input {...register('contact_phone')} className="form-input" /></label><label>Contact email<input type="email" {...register('contact_email')} className="form-input" /></label><label>Website<input type="url" {...register('website')} className="form-input" /></label>
           <label className="md:col-span-2">Short description<input {...register('short_description')} className="form-input" /></label><label className="md:col-span-2">Description *<textarea {...register('description', { required: 'Description is required' })} rows={5} className="form-input" /></label>
         </div></section>
         <section className="rounded-lg bg-white p-6 shadow"><h2 className="mb-5 text-xl font-semibold">Location</h2><div className="grid gap-4 md:grid-cols-2">
           <label className="md:col-span-2">Address *<input {...register('address', { required: 'Address is required' })} className="form-input" /></label><label>City *<input {...register('city', { required: 'City is required' })} className="form-input" /></label><label>District *<input {...register('district', { required: 'District is required' })} className="form-input" /></label><label>Province *<input {...register('province', { required: 'Province is required' })} className="form-input" /></label><label>Country<input defaultValue="Sri Lanka" className="form-input" readOnly /></label><label>Latitude<input {...register('latitude')} className="form-input" /></label><label>Longitude<input {...register('longitude')} className="form-input" /></label><label className="md:col-span-2">Google Maps URL<input type="url" {...register('google_maps_url')} className="form-input" /></label>
         </div></section>
-        <section className="rounded-lg bg-white p-6 shadow"><h2 className="mb-5 text-xl font-semibold">Property amenities</h2><div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">{amenities.map((amenity, index) => <label key={amenity} className="flex items-center gap-2"><input type="checkbox" checked={selectedAmenities.includes(index + 1)} onChange={() => setSelectedAmenities(current => current.includes(index + 1) ? current.filter(id => id !== index + 1) : [...current, index + 1])} />{amenity}</label>)}</div><p className="mt-3 text-sm text-gray-500">Selected amenities use the existing amenity relationship.</p></section>
+        <section className="rounded-lg bg-white p-6 shadow"><h2 className="mb-5 text-xl font-semibold">Property amenities</h2>{loadingOptions ? <p className="text-sm text-gray-500">Loading amenities...</p> : <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">{amenities.map(amenity => <label key={amenity.id} className="flex items-center gap-2"><input type="checkbox" checked={selectedAmenities.includes(amenity.id)} onChange={() => setSelectedAmenities(current => current.includes(amenity.id) ? current.filter(id => id !== amenity.id) : [...current, amenity.id])} />{amenity.name}</label>)}</div>}<p className="mt-3 text-sm text-gray-500">Amenities are optional. Selections are loaded from the platform's amenity list.</p></section>
         <section className="rounded-lg bg-white p-6 shadow"><h2 className="mb-5 text-xl font-semibold">House rules</h2><label>Rules, check-in/out, smoking, pets, events, children, and additional information<textarea {...register('house_rules')} rows={6} className="form-input" /></label></section>
         <div className="flex flex-wrap items-center justify-between gap-4 pb-10"><span className="text-sm text-gray-500">{propertyId ? `Draft ID: ${propertyId}` : 'No property has been created yet.'}</span><button type="submit" disabled={saving} className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50">{saving ? 'Saving...' : 'Save draft'}</button></div>
       </form>

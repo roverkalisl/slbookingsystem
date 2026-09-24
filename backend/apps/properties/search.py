@@ -5,7 +5,7 @@ Advanced search service for properties with filters and sorting.
 from datetime import date
 from typing import Dict, List, Tuple
 from decimal import Decimal
-from django.db.models import Q, Avg, Count, DecimalField
+from django.db.models import Q, F, Sum, Avg, Count, DecimalField
 from django.db.models.functions import Coalesce
 
 from .models import Property, RoomType, Amenity
@@ -77,16 +77,40 @@ class PropertySearchService:
         """
         Filter to properties that have available rooms for date range.
 
-        A property is available if at least one room type has availability
-        for the entire date range.
+        A property is available if at least one active room type has a free
+        room for the entire date range. Uses the same rules as
+        BookingService.create_booking: rooms are bookable by default (daily
+        Availability rows only record owner blocks and booked dates, so a
+        missing row means "not blocked"), no date in the range may be
+        blocked/under maintenance, and inventory is the SUM of number_of_rooms
+        held by overlapping active bookings.
         """
         if check_in and check_out:
-            # Get room types with availability for entire range
+            blocked_room_ids = Availability.objects.filter(
+                date__gte=check_in,
+                date__lt=check_out,
+                status__in=['blocked', 'maintenance']
+            ).values('room_type_id')
+
             available_rooms = RoomType.objects.filter(
                 property__in=self.queryset,
-                availability__date__gte=check_in,
-                availability__date__lt=check_out,
-                availability__status__in=['available', 'booked']
+                is_active=True
+            ).exclude(
+                id__in=blocked_room_ids
+            ).annotate(
+                rooms_held=Coalesce(
+                    Sum(
+                        'booking__number_of_rooms',
+                        filter=Q(
+                            booking__status__in=['pending', 'confirmed', 'payment_pending', 'paid', 'completed'],
+                            booking__check_in_date__lt=check_out,
+                            booking__check_out_date__gt=check_in,
+                        )
+                    ),
+                    0
+                )
+            ).filter(
+                rooms_held__lt=F('total_rooms')
             ).values_list('property_id', flat=True).distinct()
 
             self.queryset = self.queryset.filter(id__in=available_rooms)
@@ -140,7 +164,10 @@ class PropertySearchService:
             'newest': f'{order_prefix}created_at',
             'created_at': f'{order_prefix}created_at',
             'rating': f'{order_prefix}average_rating',
-            'price': 'pricing__base_price',  # Default ascending for price
+            # Property has no direct 'pricing' relation - Pricing hangs off
+            # RoomType (related_name='room_types' on Property), so the path
+            # must traverse through it or this raises FieldError at query time.
+            'price': f'{order_prefix}room_types__pricing__base_price',
             'reviews': f'{order_prefix}total_reviews',
             'name': f'{order_prefix}name',
             'popular': f'{order_prefix}total_reviews',  # Most bookings

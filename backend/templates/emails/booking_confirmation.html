@@ -1,0 +1,14 @@
+{% extends "emails/_base.html" %}
+{% block heading %}Your booking is confirmed{% endblock %}
+{% block content %}
+<p>Hi {{ guest_name }},</p>
+<p>Your booking at <strong>{{ property_name }}</strong> has been confirmed by the property.</p>
+<table style="width: 100%; border-collapse: collapse; margin-top: 12px;">
+  <tr><td style="padding: 4px 0; color: #6b7280;">Booking reference</td><td style="text-align: right; font-weight: bold;">{{ booking_reference }}</td></tr>
+  <tr><td style="padding: 4px 0; color: #6b7280;">Room</td><td style="text-align: right;">{{ room_type_name }}</td></tr>
+  <tr><td style="padding: 4px 0; color: #6b7280;">Check-in</td><td style="text-align: right;">{{ check_in }}</td></tr>
+  <tr><td style="padding: 4px 0; color: #6b7280;">Check-out</td><td style="text-align: right;">{{ check_out }}</td></tr>
+  <tr><td style="padding: 4px 0; color: #6b7280;">Total</td><td style="text-align: right; font-weight: bold;">LKR {{ total_price }}</td></tr>
+</table>
+<p style="margin-top: 16px;"><a href="{{ booking_url }}" style="color: #1d4ed8;">View your booking</a></p>
+{% endblock %}

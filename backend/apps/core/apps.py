@@ -16,6 +16,9 @@ class CoreConfig(AppConfig):
         Connect post_migrate signal to populate default data.
         This is the recommended Django way - avoid database access in ready().
         """
+        # Register post_save handlers (e.g. auto-create UserProfile)
+        from . import signals  # noqa: F401
+
         # Connect the signal handler for post-migration initialization
         post_migrate.connect(self._initialize_defaults, sender=self)
 

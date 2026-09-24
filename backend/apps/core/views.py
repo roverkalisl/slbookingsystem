@@ -188,12 +188,18 @@ class AuthViewSet(viewsets.ViewSet):
             status=status.HTTP_200_OK
         )
 
-    @action(detail=False, methods=['put'], permission_classes=[IsAuthenticated])
+    @action(detail=False, methods=['put', 'patch'], url_path='update-profile', permission_classes=[IsAuthenticated])
     def update_profile(self, request):
         """
         Update current user profile.
 
-        PUT /api/auth/update-profile/
+        PUT/PATCH /api/auth/update-profile/
+
+        NOTE: url_path is set explicitly to 'update-profile' - DRF's @action
+        otherwise defaults to the method name verbatim ('update_profile'),
+        which never matched what this docstring (and the frontend, which
+        calls PATCH /auth/update-profile/) actually expect. Without this,
+        every profile update from the UI 404s.
         """
         user = request.user
         serializer = UserSerializer(user, data=request.data, partial=True)
@@ -209,7 +215,7 @@ class AuthViewSet(viewsets.ViewSet):
             status=status.HTTP_200_OK
         )
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], url_path='password-reset-request')
     def password_reset_request(self, request):
         """
         Request password reset (send email with token).
@@ -223,10 +229,12 @@ class AuthViewSet(viewsets.ViewSet):
         serializer.is_valid(raise_exception=True)
 
         email = serializer.validated_data['email']
-        user = User.objects.get(email=email)
-
-        # TODO: Generate reset token and send email
-        # For now, just return success
+        # Always return the same success response whether or not the email
+        # exists - looking it up and branching on DoesNotExist would both
+        # crash unhandled AND leak which emails are registered (user
+        # enumeration). TODO: generate reset token and send email when this
+        # is wired up; not called from the frontend yet.
+        User.objects.filter(email=email).first()
 
         return Response(
             {
@@ -236,7 +244,7 @@ class AuthViewSet(viewsets.ViewSet):
             status=status.HTTP_200_OK
         )
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], url_path='password-reset-confirm')
     def password_reset_confirm(self, request):
         """
         Confirm password reset with token.
@@ -276,12 +284,13 @@ class AuthViewSet(viewsets.ViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    @action(detail=False, methods=['post'], url_path='change-password', permission_classes=[IsAuthenticated])
     def change_password(self, request):
         """
         Change password for authenticated user.
 
-        POST /api/auth/change-password/
+        POST /api/auth/change-password/ (url_path set explicitly - see the
+        note on update_profile above for why this matters)
         {
             "old_password": "OldPass123!",
             "new_password": "NewPass123!",

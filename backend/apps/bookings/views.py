@@ -2,10 +2,12 @@
 Views for booking management with double-booking prevention.
 """
 
+import logging
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from datetime import date, datetime
@@ -21,6 +23,19 @@ from .serializers import (
 from .service import BookingService, BookingConflictError
 from apps.properties.models import RoomType
 from apps.properties.pricing import PricingCalculator
+
+logger = logging.getLogger(__name__)
+
+
+def _find_booking(pk):
+    """Booking by id, or None for a missing or malformed id (-> 404, not 500)."""
+    try:
+        return Booking.objects.get(id=pk)
+    except (Booking.DoesNotExist, DjangoValidationError):
+        return None
+
+
+BOOKING_NOT_FOUND = {'error': 'Booking not found'}
 
 
 class BookingViewSet(viewsets.ModelViewSet):
@@ -43,6 +58,10 @@ class BookingViewSet(viewsets.ModelViewSet):
     """
 
     permission_classes = [permissions.IsAuthenticated]
+    # Bookings are auditable transactional records: no hard DELETE and no
+    # generic PUT/PATCH for any role. State changes go through the explicit
+    # cancel / confirm / reject / confirm-payment actions (status changes).
+    http_method_names = ['get', 'post', 'head', 'options']
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['status', 'payment_status']
     search_fields = ['booking_reference', 'guest__email']
@@ -110,10 +129,11 @@ class BookingViewSet(viewsets.ModelViewSet):
                     "is_primary_guest": true
                 }
             ],
-            "special_requests": "Late check-in",
-            "discount_percent": "0",
-            "discount_fixed": "0"
+            "special_requests": "Late check-in"
         }
+
+        The price is always calculated server-side; client-supplied discounts
+        or totals are ignored.
         """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -133,9 +153,15 @@ class BookingViewSet(viewsets.ModelViewSet):
                 num_rooms=serializer.validated_data['number_of_rooms'],
                 guest_details=serializer.validated_data.get('guests'),
                 special_requests=serializer.validated_data.get('special_requests', ''),
-                discount_percent=Decimal(str(serializer.validated_data.get('discount_percent', 0))),
-                discount_fixed=Decimal(str(serializer.validated_data.get('discount_fixed', 0)))
+                # No discount args: guests must never choose their own discount.
             )
+
+            # Notify the property owner (never let a notification failure block the booking)
+            try:
+                from apps.notifications.service import NotificationService
+                NotificationService.send_owner_notification(booking)
+            except Exception:
+                logger.exception('Failed to send new-booking notification for booking %s', booking.id)
 
             # Return booking details
             output_serializer = BookingDetailSerializer(booking)
@@ -153,6 +179,7 @@ class BookingViewSet(viewsets.ModelViewSet):
             return Response(
                 {
                     'success': False,
+                    'detail': str(e),
                     'error': str(e),
                     'error_code': 'BOOKING_CONFLICT'
                 },
@@ -208,7 +235,9 @@ class BookingViewSet(viewsets.ModelViewSet):
         }
         """
         try:
-            booking = Booking.objects.get(id=pk)
+            booking = _find_booking(pk)
+            if booking is None:
+                return Response(BOOKING_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
             # Permission check
             if booking.guest != request.user and not request.user.is_staff:
@@ -221,6 +250,16 @@ class BookingViewSet(viewsets.ModelViewSet):
 
             # Cancel booking
             result = BookingService.cancel_booking(booking, reason=reason)
+
+            try:
+                from apps.notifications.service import NotificationService
+                NotificationService.send_cancellation_notification(
+                    booking,
+                    refund_amount=result['refund_amount'],
+                    refund_percent=result['refund_percent']
+                )
+            except Exception:
+                logger.exception('Failed to send cancellation email for booking %s', booking.id)
 
             return Response(
                 {
@@ -254,7 +293,9 @@ class BookingViewSet(viewsets.ModelViewSet):
         }
         """
         try:
-            booking = Booking.objects.get(id=pk)
+            booking = _find_booking(pk)
+            if booking is None:
+                return Response(BOOKING_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
             # Permission check (only owner or staff can confirm payment)
             if booking.property.owner != request.user and not request.user.is_staff:
@@ -281,8 +322,83 @@ class BookingViewSet(viewsets.ModelViewSet):
                 {'error': 'Booking not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_409_CONFLICT)
 
-    @action(detail=False, methods=['post'])
+    @action(detail=True, methods=['post'])
+    def confirm(self, request, pk=None):
+        """
+        Property owner confirms a pending booking request. No payment gateway
+        is required for this — booking confirmation is independent of payment.
+
+        POST /api/bookings/{id}/confirm/
+        """
+        try:
+            booking = _find_booking(pk)
+            if booking is None:
+                return Response(BOOKING_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+            if booking.property.owner != request.user and not request.user.is_staff:
+                raise PermissionDenied("Only the property owner or admin can confirm this booking")
+
+            booking = BookingService.owner_confirm_booking(booking)
+
+            try:
+                from apps.notifications.service import NotificationService
+                NotificationService.send_booking_confirmation(booking)
+            except Exception:
+                logger.exception('Failed to send booking-confirmation email for booking %s', booking.id)
+
+            serializer = BookingDetailSerializer(booking)
+            return Response(
+                {'success': True, 'message': 'Booking confirmed', 'data': serializer.data},
+                status=status.HTTP_200_OK
+            )
+
+        except Booking.DoesNotExist:
+            return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_409_CONFLICT)
+
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        """
+        Property owner rejects a pending booking request and releases the room.
+
+        POST /api/bookings/{id}/reject/
+        {
+            "reason": "Room unavailable due to maintenance"
+        }
+        """
+        try:
+            booking = _find_booking(pk)
+            if booking is None:
+                return Response(BOOKING_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+            if booking.property.owner != request.user and not request.user.is_staff:
+                raise PermissionDenied("Only the property owner or admin can reject this booking")
+
+            reason = request.data.get('reason', '')
+            booking = BookingService.owner_reject_booking(booking, reason=reason)
+
+            try:
+                from apps.notifications.service import NotificationService
+                NotificationService.send_booking_rejected(booking, reason=reason)
+            except Exception:
+                logger.exception('Failed to send booking-rejected email for booking %s', booking.id)
+
+            serializer = BookingDetailSerializer(booking)
+            return Response(
+                {'success': True, 'message': 'Booking rejected', 'data': serializer.data},
+                status=status.HTTP_200_OK
+            )
+
+        except Booking.DoesNotExist:
+            return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_409_CONFLICT)
+
+    @action(detail=False, methods=['post'], url_path='calculate-price')
     def calculate_price(self, request):
         """
         Calculate price for a booking without creating it.
@@ -294,8 +410,7 @@ class BookingViewSet(viewsets.ModelViewSet):
             "check_out_date": "2026-09-17",
             "number_of_adults": 2,
             "number_of_children": 0,
-            "discount_percent": "0",
-            "discount_fixed": "0"
+            "number_of_rooms": 1
         }
         """
         serializer = self.get_serializer(data=request.data)
@@ -310,8 +425,7 @@ class BookingViewSet(viewsets.ModelViewSet):
                 serializer.validated_data['check_out_date'],
                 num_adults=serializer.validated_data['number_of_adults'],
                 num_children=serializer.validated_data['number_of_children'],
-                discount_percent=Decimal(str(serializer.validated_data.get('discount_percent', 0))),
-                discount_fixed=Decimal(str(serializer.validated_data.get('discount_fixed', 0)))
+                num_rooms=serializer.validated_data['number_of_rooms'],
             )
 
             price_serializer = PriceBreakdownSerializer(price_breakdown)
@@ -336,7 +450,7 @@ class BookingViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], url_path='check-availability')
     def check_availability(self, request):
         """
         Check if a room is available for date range (non-blocking check).

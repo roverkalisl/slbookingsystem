@@ -27,6 +27,10 @@ export default function AddRoomPage() {
     total_rooms: 1,
     view_type: '',
   })
+  // Pricing is stored separately (POST /properties/rooms/{id}/pricing/) and
+  // is required before the property can be submitted for approval.
+  const [basePrice, setBasePrice] = useState('')
+  const [weekendPrice, setWeekendPrice] = useState('')
 
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get('propertyId')
@@ -39,14 +43,25 @@ export default function AddRoomPage() {
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (!propertyId) return
+    if (!propertyId || saving) return
     setSaving(true)
     setError(null)
+    let room: any = null
     try {
-      await api.createRoom(propertyId, form)
+      room = await api.createRoom(propertyId, form)
+      await api.setRoomPricing(room.id, {
+        base_price: basePrice,
+        weekend_price: weekendPrice.trim() === '' ? null : weekendPrice,
+      })
       router.push(`/owner/properties/rooms?propertyId=${encodeURIComponent(propertyId)}`)
     } catch (err: any) {
-      setError(err.response?.data?.detail || err.response?.data?.error || 'Unable to save room.')
+      const data = err.response?.data
+      const detail = data?.detail || data?.error || data?.base_price?.[0] || data?.weekend_price?.[0]
+      setError(
+        room
+          ? `Room saved, but its price could not be saved${detail ? `: ${detail}` : ''}. Set the price from the Rooms page.`
+          : detail || 'Unable to save room.'
+      )
     } finally {
       setSaving(false)
     }
@@ -165,6 +180,21 @@ export default function AddRoomPage() {
             <label className="block">
               Maximum Children
               <input type="number" min="0" value={form.max_children} onChange={e => update('max_children', Number(e.target.value))} className="form-input" />
+            </label>
+          </div>
+        </section>
+
+        {/* Pricing */}
+        <section>
+          <h2 className="font-semibold mb-3">Pricing (LKR per room, per night)</h2>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block">
+              Price per night *
+              <input type="number" min="1" step="0.01" required value={basePrice} onChange={e => setBasePrice(e.target.value)} className="form-input" placeholder="e.g., 12000" />
+            </label>
+            <label className="block">
+              Weekend price (Fri-Sun, optional)
+              <input type="number" min="1" step="0.01" value={weekendPrice} onChange={e => setWeekendPrice(e.target.value)} className="form-input" placeholder="Same as nightly price if empty" />
             </label>
           </div>
         </section>

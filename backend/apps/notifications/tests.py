@@ -10,7 +10,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch, MagicMock
 
-from .models import Notification, NotificationTemplate
+from .models import Notification
 from .service import (
     NotificationService, EmailChannel, SMSChannel,
     PushNotificationChannel, InAppChannel
@@ -73,7 +73,7 @@ class SMSChannelTestCase(TestCase):
         self.guest = User.objects.create_user(
             email='guest@example.com',
             password='test',
-            phone_number='+94711234567'
+            phone='+94711234567'
         )
         UserRole.objects.create(user=self.guest, role=guest_role)
 
@@ -328,37 +328,9 @@ class NotificationServiceTestCase(TestCase):
         self.assertIsNotNone(notification)
 
 
-class NotificationTemplateTestCase(TestCase):
-    """Tests for notification templates"""
-
-    def setUp(self):
-        """Set up test data"""
-        self.template = NotificationTemplate.objects.create(
-            notification_type='booking_confirmation',
-            subject='Booking Confirmed - {{booking_id}}',
-            template='Your booking {{booking_id}} is confirmed. Check-in: {{check_in}}'
-        )
-
-    def test_template_variable_substitution(self):
-        """Test template variable substitution"""
-        context = {
-            'booking_id': 'BK001',
-            'check_in': '2026-09-20'
-        }
-
-        message = self.template.render(context)
-
-        self.assertIn('BK001', message)
-        self.assertIn('2026-09-20', message)
-        self.assertNotIn('{{', message)
-
-    def test_template_html_rendering(self):
-        """Test HTML template rendering"""
-        html_template = NotificationTemplate.objects.create(
-            notification_type='booking_confirmation_html',
-            is_html=True,
-            subject='Booking Confirmed',
-            template='<p>Your booking {{booking_id}} is confirmed.</p>'
-        )
-
-        self.assertTrue(html_template.is_html)
+## NOTE: NotificationTemplateTestCase previously tested a DB-backed
+## NotificationTemplate model that was never implemented. The actual
+## architecture (NotificationService.TEMPLATES in
+## apps/notifications/service.py) renders file-based Django templates from
+## templates/emails/*.html instead, so that class was removed rather than
+## built against a model that doesn't exist.

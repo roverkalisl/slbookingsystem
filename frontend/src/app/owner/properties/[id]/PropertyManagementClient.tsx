@@ -12,6 +12,9 @@ interface Photo {
   display_order: number
 }
 
+const MAX_PHOTO_SIZE_MB = 10
+const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+
 export default function PropertyManagementClient({ propertyId }: { propertyId: string }) {
   const [property, setProperty] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
@@ -19,6 +22,11 @@ export default function PropertyManagementClient({ propertyId }: { propertyId: s
   const [photos, setPhotos] = useState<Photo[]>([])
   const [photoError, setPhotoError] = useState<string | null>(null)
   const [photoSuccess, setPhotoSuccess] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitErrors, setSubmitErrors] = useState<string[] | null>(null)
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null)
 
   useEffect(() => {
     loadProperty()
@@ -52,6 +60,79 @@ export default function PropertyManagementClient({ propertyId }: { propertyId: s
       setPhotoSuccess('Photo deleted successfully')
     } catch (err: any) {
       setPhotoError('Failed to delete photo')
+    }
+  }
+
+  const handleUploadPhotos = async (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return
+    const files = Array.from(fileList)
+
+    setPhotoError(null)
+    setPhotoSuccess(null)
+
+    const invalid = files.find(f => !ACCEPTED_IMAGE_TYPES.includes(f.type))
+    if (invalid) {
+      setPhotoError(`"${invalid.name}" is not a supported image type (use JPEG, PNG, or WebP).`)
+      return
+    }
+    const tooBig = files.find(f => f.size > MAX_PHOTO_SIZE_MB * 1024 * 1024)
+    if (tooBig) {
+      setPhotoError(`"${tooBig.name}" is larger than ${MAX_PHOTO_SIZE_MB}MB.`)
+      return
+    }
+
+    setUploading(true)
+    setUploadProgress({ done: 0, total: files.length })
+    let uploadedCount = 0
+    try {
+      for (const file of files) {
+        const result = await api.uploadPhoto(
+          file,
+          () => api.getPropertyUploadSignature(propertyId),
+          (data) => api.addPropertyPhoto(propertyId, data)
+        )
+        setPhotos(current => [...current, {
+          id: result.id,
+          cloudinary_url: result.cloudinary_url,
+          cloudinary_public_id: result.cloudinary_public_id,
+          is_cover: result.is_cover,
+          display_order: result.display_order,
+        }])
+        uploadedCount += 1
+        setUploadProgress({ done: uploadedCount, total: files.length })
+      }
+      setPhotoSuccess(`${uploadedCount} photo(s) uploaded successfully.`)
+    } catch (err: any) {
+      setPhotoError(
+        uploadedCount > 0
+          ? `Uploaded ${uploadedCount} of ${files.length} photo(s) before an error: ${err.message || 'upload failed'}`
+          : (err.response?.data?.error || err.message || 'Upload failed. Please try again.')
+      )
+    } finally {
+      setUploading(false)
+      setUploadProgress(null)
+    }
+  }
+
+  const handleSubmitForApproval = async () => {
+    if (submitting) return
+    setSubmitting(true)
+    setSubmitErrors(null)
+    setSubmitSuccess(null)
+    try {
+      // Backend is authoritative: it re-validates photos, rooms, pricing and availability.
+      const updated = await api.submitPropertyForApproval(propertyId)
+      setProperty(updated)
+      setSubmitSuccess('Property submitted for approval. An admin will review it shortly.')
+    } catch (err: any) {
+      const data = err.response?.data
+      setSubmitErrors(
+        Array.isArray(data?.errors) && data.errors.length > 0
+          ? data.errors
+          : [data?.error || data?.detail || 'Unable to submit this property. Please try again.']
+      )
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -113,9 +194,32 @@ export default function PropertyManagementClient({ propertyId }: { propertyId: s
           {activeTab === 'photos' && (
             <section className="rounded-lg bg-white p-6 shadow">
               <h2 className="text-xl font-semibold">Property Photos</h2>
-              <p className="mt-2 text-sm text-gray-600">{photos.length} of 5 photos uploaded</p>
+              <p className="mt-2 text-sm text-gray-600">{photos.length} photo{photos.length === 1 ? '' : 's'} uploaded</p>
+
               {photoError && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-red-800">{photoError}</div>}
               {photoSuccess && <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3 text-green-800">{photoSuccess}</div>}
+
+              <label className="mt-6 flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  className="hidden"
+                  disabled={uploading}
+                  onChange={(e) => handleUploadPhotos(e.target.files)}
+                />
+                {uploading ? (
+                  <p className="text-sm text-gray-600">
+                    Uploading {uploadProgress?.done ?? 0} of {uploadProgress?.total ?? 0}...
+                  </p>
+                ) : (
+                  <>
+                    <p className="font-medium text-gray-700">Click to upload photos</p>
+                    <p className="text-xs text-gray-500">JPEG, PNG, or WebP - up to {MAX_PHOTO_SIZE_MB}MB each - select multiple at once</p>
+                  </>
+                )}
+              </label>
+
               <div className="mt-6 grid gap-4 sm:grid-cols-2 md:grid-cols-3">
                 {photos.map(photo => (
                   <div key={photo.id} className="relative">
@@ -130,7 +234,7 @@ export default function PropertyManagementClient({ propertyId }: { propertyId: s
                   </div>
                 ))}
               </div>
-              {photos.length < 5 && <p className="mt-6 text-sm text-gray-600">Upload photos via the property creation wizard or Cloudinary.</p>}
+              {photos.length === 0 && <p className="mt-4 text-sm text-gray-500">No photos yet - upload your first one above.</p>}
             </section>
           )}
 
@@ -195,7 +299,7 @@ export default function PropertyManagementClient({ propertyId }: { propertyId: s
               )}
 
               <p className="mt-6 text-xs text-gray-500 bg-blue-50 p-3 rounded">
-                💡 Each room type can have separate photos (unlimited per room). Room photos are distinct from the 5 property cover photos above.
+                💡 Each room type can have separate photos (unlimited per room). Room photos are distinct from the property photos above.
               </p>
             </section>
           )}
@@ -227,14 +331,36 @@ export default function PropertyManagementClient({ propertyId }: { propertyId: s
                 <p className="text-sm">Before submitting, ensure:</p>
                 <ul className="ml-4 space-y-1 text-sm text-gray-700">
                   <li>✓ Property details complete</li>
-                  <li>{photos.length > 0 ? '✓' : '✗'} At least 1 property photo</li>
+                  <li>{photos.length >= 5 ? '✓' : '✗'} At least 5 property photos ({photos.length} uploaded)</li>
                   <li>{property.room_types?.length > 0 ? '✓' : '✗'} At least 1 room type</li>
-                  <li>✓ Pricing configured</li>
+                  <li>• Every room has at least 5 photos and pricing configured</li>
                 </ul>
               </div>
-              <button className="mt-6 rounded-lg bg-green-600 px-6 py-2 text-white hover:bg-green-700 disabled:opacity-50" disabled={photos.length === 0 || !property.room_types?.length}>
-                Submit for Approval
-              </button>
+              {submitErrors && (
+                <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                  <p className="font-semibold">This property can&apos;t be submitted yet:</p>
+                  <ul className="ml-4 mt-2 list-disc space-y-1">
+                    {submitErrors.map((message) => <li key={message}>{message}</li>)}
+                  </ul>
+                </div>
+              )}
+              {submitSuccess && <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">{submitSuccess}</div>}
+              {['draft', 'rejected'].includes(property.status) ? (
+                <button
+                  type="button"
+                  onClick={handleSubmitForApproval}
+                  className="mt-6 rounded-lg bg-green-600 px-6 py-2 text-white hover:bg-green-700 disabled:opacity-50"
+                  disabled={submitting || photos.length < 5 || !property.room_types?.length}
+                >
+                  {submitting ? 'Submitting...' : 'Submit for Approval'}
+                </button>
+              ) : (
+                !submitSuccess && (
+                  <p className="mt-6 text-sm text-gray-600">
+                    This property is {String(property.status).replace('_', ' ')} - it can only be submitted while in draft or after rejection.
+                  </p>
+                )
+              )}
             </section>
           )}
         </>

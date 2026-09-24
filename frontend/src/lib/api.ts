@@ -14,6 +14,8 @@ import type {
   SearchFilters,
   Notification,
   Review,
+  PaymentMethod,
+  PaymentInitiation,
 } from '@/types'
 
 const API_BASE_URL =
@@ -209,6 +211,47 @@ class ApiClient {
     }
   }
 
+  /**
+   * Owner's own properties, at ANY status (draft, pending_approval, approved,
+   * rejected, suspended, unpublished) - hits GET /properties/ directly.
+   *
+   * getProperties() above hits /properties/search/advanced/, which always
+   * filters to status='approved' (that's the guest-facing search - correct
+   * there, since guests must never see unapproved listings). Using it for
+   * owner-facing pages (dashboard, "My Properties", calendar) meant a newly
+   * created draft could never be found again until approved. This method is
+   * for the owner-management surfaces instead.
+   */
+  async getOwnerProperties(): Promise<PaginatedResponse<Property>> {
+    const response = await this.client.get<any>('/properties/')
+    const results = response.data.results || response.data.data || response.data
+    return {
+      ...response.data,
+      results: (Array.isArray(results) ? results : []).map((property: any) => this.normalizeProperty(property)),
+    }
+  }
+
+  /**
+   * Admin review queue: GET /properties/ (staff see every status - draft,
+   * pending_approval, approved, rejected...). NOT the guest search endpoint,
+   * which only ever returns approved properties. Follows every page so
+   * pagination can never hide a pending property; stable ordering keeps page
+   * boundaries consistent.
+   */
+  async getAdminProperties(status?: string): Promise<Property[]> {
+    const all: Property[] = []
+    for (let page = 1; page <= 100; page += 1) {
+      const response = await this.client.get<any>('/properties/', {
+        params: { page, ordering: '-created_at', ...(status ? { status } : {}) },
+      })
+      const data = response.data
+      const results: any[] = data.results ?? data.data ?? (Array.isArray(data) ? data : [])
+      all.push(...results.map((raw) => this.normalizeProperty({ ...raw, owner: raw.owner_info ?? raw.owner })))
+      if (!data.next) break
+    }
+    return all
+  }
+
   async getProperty(id: string): Promise<Property> {
     const response = await this.client.get<any>(`/properties/${id}/`)
     return this.normalizeProperty(response.data.data || response.data)
@@ -233,6 +276,16 @@ class ApiClient {
     return (response.data.data || response.data).map((property: any) =>
       this.normalizeProperty(property)
     )
+  }
+
+  async getPropertyTypes(): Promise<{ id: number; name: string; description: string | null; is_active: boolean }[]> {
+    const response = await this.client.get<any>('/properties/types/')
+    return response.data.results || response.data.data || response.data
+  }
+
+  async getAmenities(): Promise<{ id: number; name: string; slug: string; icon_url: string | null; category: string | null }[]> {
+    const response = await this.client.get<any>('/properties/amenities/')
+    return response.data.results || response.data.data || response.data
   }
 
   async createProperty(data: any): Promise<Property> {
@@ -276,9 +329,96 @@ class ApiClient {
     await this.client.delete(`/properties/rooms/${roomId}/delete-photo/?photo_id=${photoId}`)
   }
 
+  async getPropertyUploadSignature(propertyId: string): Promise<{ signature: string; timestamp: number; api_key: string; cloud_name: string; folder: string }> {
+    const response = await this.client.get<any>(`/properties/${propertyId}/upload-signature/`)
+    return response.data.data || response.data
+  }
+
+  async getRoomUploadSignature(roomId: string): Promise<{ signature: string; timestamp: number; api_key: string; cloud_name: string; folder: string }> {
+    const response = await this.client.get<any>(`/properties/rooms/${roomId}/upload-signature/`)
+    return response.data.data || response.data
+  }
+
+  async addPropertyPhoto(propertyId: string, data: { cloudinary_url: string; cloudinary_public_id: string }): Promise<any> {
+    const response = await this.client.post<any>(`/properties/${propertyId}/photos/`, data)
+    return response.data.data || response.data
+  }
+
+  async addRoomPhoto(roomId: string, data: { cloudinary_url: string; cloudinary_public_id: string }): Promise<any> {
+    const response = await this.client.post<any>(`/properties/rooms/${roomId}/add-photo/`, data)
+    return response.data.data || response.data
+  }
+
+  /**
+   * Upload a file directly to Cloudinary using a server-signed request, then
+   * register it with the backend. Used for both property and room photos -
+   * pass the matching signature/register functions.
+   */
+  async uploadPhoto(
+    file: File,
+    getSignature: () => Promise<{ signature: string; timestamp: number; api_key: string; cloud_name: string; folder: string }>,
+    register: (data: { cloudinary_url: string; cloudinary_public_id: string }) => Promise<any>
+  ): Promise<any> {
+    const sig = await getSignature()
+
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('api_key', sig.api_key)
+    formData.append('timestamp', String(sig.timestamp))
+    formData.append('signature', sig.signature)
+    formData.append('folder', sig.folder)
+
+    const uploadResponse = await fetch(`https://api.cloudinary.com/v1_1/${sig.cloud_name}/image/upload`, {
+      method: 'POST',
+      body: formData,
+    })
+
+    if (!uploadResponse.ok) {
+      const errorBody = await uploadResponse.json().catch(() => ({}))
+      throw new Error(errorBody?.error?.message || 'Upload to Cloudinary failed')
+    }
+
+    const uploaded = await uploadResponse.json()
+
+    return register({
+      cloudinary_url: uploaded.secure_url,
+      cloudinary_public_id: uploaded.public_id,
+    })
+  }
+
   async createRoom(propertyId: string, data: Record<string, unknown>): Promise<any> {
     const response = await this.client.post<any>(`/properties/${propertyId}/rooms/`, data)
     return response.data.data || response.data
+  }
+
+  /**
+   * POST /properties/rooms/{id}/pricing/ - owner sets the nightly price.
+   * base_price is required the first time; weekend_price is optional (null clears it).
+   */
+  async setRoomPricing(roomId: string, data: { base_price: string; weekend_price: string | null }): Promise<any> {
+    const response = await this.client.post<any>(`/properties/rooms/${roomId}/pricing/`, data)
+    return response.data.data || response.data
+  }
+
+  /** DELETE /properties/rooms/{id}/ - owner-only on the backend */
+  async deleteRoom(roomId: string): Promise<void> {
+    await this.client.delete(`/properties/rooms/${roomId}/`)
+  }
+
+  async getRoomCalendar(roomId: string, startDate: string, endDate: string): Promise<{
+    room_type_id: string
+    days: { date: string; total_rooms: number; booked_count: number; available_count: number; is_blocked: boolean }[]
+  }> {
+    const response = await this.client.get<any>(`/properties/rooms/${roomId}/calendar/?start_date=${startDate}&end_date=${endDate}`)
+    return response.data.data || response.data
+  }
+
+  async blockRoomDates(roomId: string, startDate: string, endDate: string): Promise<void> {
+    await this.client.post(`/properties/rooms/${roomId}/block-dates/`, { start_date: startDate, end_date: endDate })
+  }
+
+  async unblockRoomDates(roomId: string, startDate: string, endDate: string): Promise<void> {
+    await this.client.post(`/properties/rooms/${roomId}/unblock-dates/`, { start_date: startDate, end_date: endDate })
   }
 
   async submitPropertyForApproval(id: string): Promise<Property> {
@@ -342,6 +482,16 @@ class ApiClient {
     await this.client.post(`/bookings/${id}/cancel/`)
   }
 
+  async confirmBooking(id: string): Promise<Booking> {
+    const response = await this.client.post<any>(`/bookings/${id}/confirm/`)
+    return response.data.data || response.data
+  }
+
+  async rejectBooking(id: string, reason?: string): Promise<Booking> {
+    const response = await this.client.post<any>(`/bookings/${id}/reject/`, { reason: reason || '' })
+    return response.data.data || response.data
+  }
+
   async calculatePrice(data: {
     room_type_id: string
     check_in: string
@@ -377,13 +527,21 @@ class ApiClient {
   }
 
   // ===== Payments =====
+  /**
+   * POST /payments/initiate/ - matches PaymentInitiateSerializer exactly:
+   * { booking_id, payment_method }. No amount is ever sent - the backend
+   * charges the server-side booking total. For 'stripe' the response's
+   * payment_url is the hosted Stripe Checkout page to redirect to.
+   */
   async initiatePayment(data: {
     booking_id: string
-    amount: number
-    method: 'stripe' | 'pay_at_property' | 'bank_transfer'
-  }) {
-    const response = await this.client.post('/payments/initiate/', data)
-    return response.data
+    payment_method: PaymentMethod
+  }): Promise<PaymentInitiation> {
+    const response = await this.client.post<any>('/payments/initiate/', {
+      booking_id: data.booking_id,
+      payment_method: data.payment_method,
+    })
+    return response.data.data || response.data
   }
 
   async confirmPayment(paymentId: string) {
@@ -401,8 +559,8 @@ class ApiClient {
 
   // ===== Notifications =====
   async getNotifications(): Promise<Notification[]> {
-    const response = await this.client.get<Notification[]>('/notifications/')
-    return response.data
+    const response = await this.client.get<any>('/notifications/')
+    return response.data.results || response.data.data || response.data
   }
 
   async markNotificationAsRead(id: string): Promise<void> {
@@ -417,16 +575,16 @@ class ApiClient {
   async submitReview(data: {
     booking_id: string
     rating: number
-    title: string
+    title?: string
     comment: string
   }): Promise<Review> {
-    const response = await this.client.post<Review>('/reviews/', data)
-    return response.data
+    const response = await this.client.post<any>('/reviews/', data)
+    return response.data.data || response.data
   }
 
   async getReviews(propertyId: string): Promise<Review[]> {
-    const response = await this.client.get<Review[]>(`/reviews/?property_id=${propertyId}`)
-    return response.data
+    const response = await this.client.get<any>(`/reviews/?property_id=${propertyId}`)
+    return response.data.results || response.data.data || response.data
   }
 
   // ===== Admin: Users =====

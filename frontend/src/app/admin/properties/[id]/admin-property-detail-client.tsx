@@ -4,11 +4,14 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import { useDynamicRouteId } from '@/lib/useDynamicRouteId'
 import type { Property } from '@/types'
 import { ArrowLeft, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
 
-export default function AdminPropertyDetailClient({ propertyId }: { propertyId: string }) {
+export default function AdminPropertyDetailClient({ propertyId: paramId }: { propertyId: string }) {
   const router = useRouter()
+  // Real id from the URL - the static export pre-renders this page with '0'
+  const propertyId = useDynamicRouteId(paramId)
   const [property, setProperty] = useState<Property | null>(null)
   const [loading, setLoading] = useState(true)
   const [action, setAction] = useState<'approve' | 'reject' | null>(null)
@@ -16,14 +19,15 @@ export default function AdminPropertyDetailClient({ propertyId }: { propertyId: 
   const [rejectionReason, setRejectionReason] = useState('')
 
   useEffect(() => {
+    if (!propertyId) return
     const loadProperty = async () => {
       try {
-        const response = await api.getProperties()
-        const found = (response.results || []).find((item) => item.id.toString() === propertyId)
-        if (!found) setError('Property not found')
-        else setProperty(found)
-      } catch {
-        setError('Failed to load property')
+        // Detail endpoint (admins see every status) - includes photos and
+        // rooms for review. The old version scanned only the first page of
+        // the property list, so later properties showed "not found".
+        setProperty(await api.getProperty(propertyId))
+      } catch (err: any) {
+        setError(err.response?.status === 404 ? 'Property not found' : 'Failed to load property')
       } finally {
         setLoading(false)
       }
@@ -37,8 +41,8 @@ export default function AdminPropertyDetailClient({ propertyId }: { propertyId: 
       setAction('approve')
       await api.approveProperty(property.id)
       router.push('/admin/properties?status=approved')
-    } catch {
-      setError('Failed to approve property')
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.response?.data?.detail || 'Failed to approve property')
       setAction(null)
     }
   }
@@ -52,11 +56,13 @@ export default function AdminPropertyDetailClient({ propertyId }: { propertyId: 
       setAction('reject')
       await api.rejectProperty(property.id, rejectionReason)
       router.push('/admin/properties?status=rejected')
-    } catch {
-      setError('Failed to reject property')
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.response?.data?.detail || 'Failed to reject property')
       setAction(null)
     }
   }
+
+  const rooms: any[] = (property as any)?.room_types || []
 
   if (loading) return <div className="py-12 text-center text-gray-600">Loading property details...</div>
   if (!property) return <div className="py-12 text-center text-red-700">{error || 'Property not found'}</div>
@@ -75,6 +81,49 @@ export default function AdminPropertyDetailClient({ propertyId }: { propertyId: 
           <div><p className="text-sm text-gray-600">Bedrooms</p><p className="font-semibold mt-1">{property.bedrooms}</p></div>
           <div><p className="text-sm text-gray-600">Guests</p><p className="font-semibold mt-1">{property.max_guests}</p></div>
         </div>
+      </div>
+      <div className="bg-white rounded-lg shadow p-6 mb-6">
+        <h2 className="text-xl font-bold mb-3">Photos ({property.photos.length})</h2>
+        {property.photos.length > 0 ? (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {property.photos.map((photo: any) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={photo.id} src={photo.url} alt={property.name} className="h-32 w-full rounded object-cover" />
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-600">No property photos.</p>
+        )}
+      </div>
+      <div className="bg-white rounded-lg shadow p-6 mb-6">
+        <h2 className="text-xl font-bold mb-3">Rooms ({rooms.length})</h2>
+        {rooms.length > 0 ? (
+          <div className="space-y-4">
+            {rooms.map((room) => (
+              <div key={room.id} className="border-t pt-4 first:border-t-0 first:pt-0">
+                <p className="font-semibold">{room.name} {room.is_active === false && <span className="text-sm text-gray-500">(inactive)</span>}</p>
+                <p className="text-sm text-gray-600">
+                  {room.max_adults} adults, {room.max_children || 0} children • {room.total_rooms} unit(s) •{' '}
+                  {room.pricing
+                    ? `LKR ${Number(room.pricing.base_price).toLocaleString()} / night${room.pricing.weekend_price ? ` (weekend LKR ${Number(room.pricing.weekend_price).toLocaleString()})` : ''}`
+                    : 'no price set'}
+                </p>
+                {room.photos?.length > 0 ? (
+                  <div className="mt-2 grid grid-cols-3 md:grid-cols-6 gap-2">
+                    {room.photos.map((photo: any) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img key={photo.id} src={photo.cloudinary_url} alt={room.name} className="h-20 w-full rounded object-cover" />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-600 mt-1">No room photos.</p>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-600">No rooms.</p>
+        )}
       </div>
       <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-xl font-bold mb-3">Description</h2>

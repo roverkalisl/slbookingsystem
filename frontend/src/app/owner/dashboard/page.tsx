@@ -43,7 +43,7 @@ export default function OwnerDashboard() {
         setLoading(true)
 
         // Load owner's properties
-        const propsResponse = await api.getProperties()
+        const propsResponse = await api.getOwnerProperties()
         const propsData = propsResponse.results || []
         setProperties(propsData)
 

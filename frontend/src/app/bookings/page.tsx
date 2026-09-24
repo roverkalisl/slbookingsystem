@@ -4,13 +4,41 @@
 
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/stores/auth'
 import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
-import type { Booking } from '@/types'
+import type { Booking, BookingPaymentStatus } from '@/types'
 import { Calendar, MapPin, DollarSign, Clock, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
+
+// Booking statuses that still hold the rooms and may be paid
+// (mirrors BookingService.PAYABLE_STATUSES - the backend re-checks anyway).
+const PAYABLE_BOOKING_STATUSES = ['pending', 'payment_pending', 'confirmed']
+// Payment states where a new online payment attempt makes no sense.
+const SETTLED_PAYMENT_STATUSES: BookingPaymentStatus[] = ['paid', 'processing', 'refunded', 'partially_refunded']
+
+const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  pending: 'Not paid',
+  processing: 'Processing',
+  paid: 'Paid',
+  failed: 'Payment failed',
+  cancelled: 'Payment cancelled',
+  refunded: 'Refunded',
+  partially_refunded: 'Partially refunded',
+}
+
+// After returning from Stripe, the webhook (not the browser) confirms the
+// payment. Re-check the server for a short while before telling the guest
+// it is still processing.
+const RETURN_POLL_INTERVAL_MS = 3000
+const RETURN_POLL_ATTEMPTS = 10
+
+type ReturnNotice =
+  | { kind: 'checking'; reference: string }
+  | { kind: 'paid'; reference: string }
+  | { kind: 'pending'; reference: string }
+  | { kind: 'cancelled'; reference: string }
 
 export default function BookingsPage() {
   const router = useRouter()
@@ -18,6 +46,10 @@ export default function BookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
   const [cancellingId, setCancellingId] = useState<string | null>(null)
+  const [payingId, setPayingId] = useState<string | null>(null)
+  const [payErrors, setPayErrors] = useState<Record<string, string>>({})
+  const [returnNotice, setReturnNotice] = useState<ReturnNotice | null>(null)
+  const returnHandled = useRef(false)
 
   // Check authentication
   useEffect(() => {
@@ -26,24 +58,113 @@ export default function BookingsPage() {
     }
   }, [isAuthenticated, isLoading, router])
 
-  // Load bookings
+  // Load bookings (and, when returning from Stripe Checkout, poll the server
+  // for the webhook-verified payment status)
   useEffect(() => {
     if (!isAuthenticated) return
+    let cancelled = false
+    let pollTimer: ReturnType<typeof setTimeout> | undefined
 
-    async function loadBookings() {
-      try {
-        setLoading(true)
-        const data = await api.getBookings()
-        setBookings(data)
-      } catch (error) {
-        console.error('Failed to load bookings:', error)
-      } finally {
-        setLoading(false)
+    // Read ?payment=success|cancelled&booking=REF once, then drop it from the
+    // URL so a page refresh does not replay the notice. Read from
+    // window.location (not useSearchParams) to stay static-export friendly.
+    let returnParams: { payment: string; reference: string } | null = null
+    if (!returnHandled.current && typeof window !== 'undefined') {
+      returnHandled.current = true
+      const params = new URLSearchParams(window.location.search)
+      const payment = params.get('payment')
+      const reference = params.get('booking')
+      if ((payment === 'success' || payment === 'cancelled') && reference) {
+        returnParams = { payment, reference }
+        window.history.replaceState(null, '', window.location.pathname)
       }
     }
 
-    loadBookings()
+    async function loadBookings(): Promise<Booking[] | null> {
+      try {
+        const data = await api.getBookings()
+        if (!cancelled) setBookings(data)
+        return data
+      } catch (error) {
+        console.error('Failed to load bookings:', error)
+        return null
+      }
+    }
+
+    async function init() {
+      setLoading(true)
+      const data = await loadBookings()
+      if (!cancelled) setLoading(false)
+      if (!returnParams || cancelled) return
+
+      const { payment, reference } = returnParams
+      if (payment === 'cancelled') {
+        setReturnNotice({ kind: 'cancelled', reference })
+        return
+      }
+
+      // Success URL return != verified payment: only the server's
+      // payment_status (set by the verified Stripe webhook) counts.
+      const isPaid = (list: Booking[] | null) =>
+        !!list?.find((b) => b.booking_reference === reference && b.payment_status === 'paid')
+
+      if (isPaid(data)) {
+        setReturnNotice({ kind: 'paid', reference })
+        return
+      }
+      setReturnNotice({ kind: 'checking', reference })
+
+      let attempts = 0
+      const poll = async () => {
+        attempts += 1
+        const latest = await loadBookings()
+        if (cancelled) return
+        if (isPaid(latest)) {
+          setReturnNotice({ kind: 'paid', reference })
+        } else if (attempts >= RETURN_POLL_ATTEMPTS) {
+          setReturnNotice({ kind: 'pending', reference })
+        } else {
+          pollTimer = setTimeout(poll, RETURN_POLL_INTERVAL_MS)
+        }
+      }
+      pollTimer = setTimeout(poll, RETURN_POLL_INTERVAL_MS)
+    }
+
+    init()
+    return () => {
+      cancelled = true
+      if (pollTimer) clearTimeout(pollTimer)
+    }
   }, [isAuthenticated])
+
+  const canPayOnline = (booking: Booking) =>
+    PAYABLE_BOOKING_STATUSES.includes(booking.status) &&
+    !SETTLED_PAYMENT_STATUSES.includes(booking.payment_status)
+
+  const handlePayOnline = async (booking: Booking) => {
+    if (payingId) return // one checkout at a time - prevents duplicate clicks
+    setPayingId(booking.id)
+    setPayErrors((current) => ({ ...current, [booking.id]: '' }))
+
+    try {
+      // Only the booking id and method are sent - the backend charges the
+      // server-side booking total and returns the hosted Checkout URL.
+      const result = await api.initiatePayment({ booking_id: booking.id, payment_method: 'stripe' })
+      const url = result.payment_url
+      if (!url || !url.startsWith('https://')) {
+        throw new Error('The payment page could not be opened. Please try again.')
+      }
+      // Leave payingId set: the browser is navigating away to Stripe.
+      window.location.assign(url)
+    } catch (err: any) {
+      const data = err.response?.data
+      setPayErrors((current) => ({
+        ...current,
+        [booking.id]: data?.error || data?.detail || err.message || 'Could not start the payment. Please try again.',
+      }))
+      setPayingId(null)
+    }
+  }
 
   const handleCancelBooking = async (bookingId: string) => {
     if (!confirm('Are you sure you want to cancel this booking?')) return
@@ -82,6 +203,7 @@ export default function BookingsPage() {
       case 'paid':
         return <span className="badge badge-success">{status}</span>
       case 'cancelled':
+      case 'rejected':
         return <span className="badge badge-danger">{status}</span>
       case 'pending':
         return <span className="badge badge-warning">{status}</span>
@@ -101,6 +223,34 @@ export default function BookingsPage() {
   return (
     <div className="container py-8">
       <h1 className="text-3xl font-bold mb-8">My Bookings</h1>
+
+      {returnNotice && (
+        <div
+          className={`mb-6 rounded-lg border p-4 text-sm ${
+            returnNotice.kind === 'paid'
+              ? 'border-green-200 bg-green-50 text-green-800'
+              : returnNotice.kind === 'cancelled'
+                ? 'border-gray-200 bg-gray-50 text-gray-800'
+                : 'border-yellow-200 bg-yellow-50 text-yellow-800'
+          }`}
+        >
+          {returnNotice.kind === 'paid' && (
+            <>Payment received for booking <strong>{returnNotice.reference}</strong>. Thank you!</>
+          )}
+          {returnNotice.kind === 'checking' && (
+            <>Confirming your payment for booking <strong>{returnNotice.reference}</strong> with Stripe...</>
+          )}
+          {returnNotice.kind === 'pending' && (
+            <>
+              Your payment for booking <strong>{returnNotice.reference}</strong> is still being confirmed.
+              This can take a few minutes - refresh this page later. You will also receive an email once it is confirmed.
+            </>
+          )}
+          {returnNotice.kind === 'cancelled' && (
+            <>Payment for booking <strong>{returnNotice.reference}</strong> was cancelled. You have not been charged - you can try again below.</>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="text-center py-12">
@@ -147,18 +297,27 @@ export default function BookingsPage() {
 
                 {/* Guest Info */}
                 <div>
-                  <p className="text-sm text-gray-600 mb-4">Guests ({booking.guests.length})</p>
-                  <div className="space-y-2">
-                    {booking.guests.map((guest) => (
-                      <div key={guest.id} className="text-sm">
-                        <p className="font-semibold">
-                          {guest.first_name} {guest.last_name}
-                          {guest.is_primary_guest && <span className="text-xs text-gray-600"> (Primary)</span>}
-                        </p>
-                        <p className="text-gray-600">{guest.email}</p>
-                      </div>
-                    ))}
-                  </div>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Guests ({booking.number_of_adults + booking.number_of_children})
+                  </p>
+                  {booking.guests && booking.guests.length > 0 ? (
+                    <div className="space-y-2">
+                      {booking.guests.map((guest) => (
+                        <div key={guest.id} className="text-sm">
+                          <p className="font-semibold">
+                            {guest.first_name} {guest.last_name}
+                            {guest.is_primary_guest && <span className="text-xs text-gray-600"> (Primary)</span>}
+                          </p>
+                          <p className="text-gray-600">{guest.email}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-600">
+                      {booking.number_of_adults} adult(s)
+                      {booking.number_of_children > 0 && `, ${booking.number_of_children} child(ren)`}
+                    </p>
+                  )}
                 </div>
 
                 {/* Status & Price */}
@@ -171,7 +330,9 @@ export default function BookingsPage() {
                     </div>
 
                     <p className="text-sm text-gray-600 mb-1">Payment Status</p>
-                    <p className="text-sm font-semibold capitalize mb-6">{booking.payment_status}</p>
+                    <p className="text-sm font-semibold mb-6">
+                      {PAYMENT_STATUS_LABELS[booking.payment_status] || booking.payment_status}
+                    </p>
                   </div>
 
                   <div>
@@ -181,6 +342,25 @@ export default function BookingsPage() {
                     </p>
 
                     <div className="space-y-2">
+                      {canPayOnline(booking) && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handlePayOnline(booking)}
+                            disabled={payingId !== null}
+                            className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50"
+                          >
+                            {payingId === booking.id ? 'Opening secure payment...' : 'Pay online'}
+                          </button>
+                          {payErrors[booking.id] && (
+                            <p className="text-sm text-red-600">{payErrors[booking.id]}</p>
+                          )}
+                        </>
+                      )}
+                      {booking.payment_status === 'processing' && (
+                        <p className="text-sm text-yellow-700">Your payment is being confirmed.</p>
+                      )}
+
                       <Link
                         href={`/booking/${booking.id}`}
                         className="w-full block text-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-secondary transition"

@@ -39,7 +39,7 @@ export default function OwnerProperties() {
   const loadProperties = async () => {
     try {
       setLoading(true)
-      const response = await api.getProperties()
+      const response = await api.getOwnerProperties()
       const data = response.results || []
 
       // Add action permissions based on status

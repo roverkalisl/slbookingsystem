@@ -14,6 +14,13 @@ from django.conf import settings
 from .models import Notification
 from apps.bookings.models import Booking
 
+# Guest-facing names for Payment.payment_method values
+PAYMENT_METHOD_LABELS = (
+    ('stripe', 'Card (Stripe)'),
+    ('pay_at_property', 'Pay at property'),
+    ('bank_transfer', 'Bank transfer'),
+)
+
 
 class NotificationChannel(ABC):
     """Abstract base class for notification channels"""
@@ -136,6 +143,8 @@ class NotificationService:
     TEMPLATES = {
         'booking_confirmation': 'emails/booking_confirmation.html',
         'booking_cancellation': 'emails/booking_cancellation.html',
+        'booking_rejected': 'emails/booking_rejected.html',
+        'new_booking_notification': 'emails/new_booking_notification.html',
         'payment_received': 'emails/payment_received.html',
         'review_request': 'emails/review_request.html',
         'password_reset': 'emails/password_reset.html',
@@ -301,23 +310,85 @@ class NotificationService:
         }
 
     @staticmethod
-    def send_payment_confirmation(booking: Booking, amount: float) -> Dict:
+    def send_booking_rejected(booking: Booking, reason: str = '') -> Dict:
         """
-        Send payment confirmation email.
+        Notify the guest that the owner rejected their booking request.
 
         Args:
             booking: Booking object
-            amount: Payment amount
+            reason: Optional rejection reason from the owner
 
         Returns:
             Dict with send result
         """
         context = {
             'booking_reference': booking.booking_reference,
-            'guest_name': booking.guest.get_full_name(),
-            'amount': amount,
-            'currency': 'LKR'
+            'property_name': booking.property.name,
+            'guest_name': booking.guest.get_full_name() or booking.guest.email,
+            'reason': reason,
         }
+
+        subject = f"Booking Update - {booking.booking_reference}"
+        html_message = render_to_string(
+            NotificationService.TEMPLATES['booking_rejected'],
+            context
+        )
+
+        channel = EmailChannel()
+        result = channel.send(
+            recipient=booking.guest.email,
+            subject=subject,
+            message=html_message
+        )
+
+        notification = Notification.objects.create(
+            recipient=booking.guest,
+            notification_type='booking_rejected',
+            title=subject,
+            message=f"Your booking {booking.booking_reference} was not accepted",
+            related_booking=booking,
+            channel='email',
+            status='sent' if result['success'] else 'failed'
+        )
+
+        return {
+            'success': result['success'],
+            'notification_id': notification.id
+        }
+
+    @staticmethod
+    def send_payment_confirmation(booking: Booking, amount: float, payment=None) -> Dict:
+        """
+        Send payment confirmation email.
+
+        Args:
+            booking: Booking object
+            amount: Payment amount
+            payment: Optional Payment record (adds method/reference/date)
+
+        Returns:
+            Dict with send result
+        """
+        context = {
+            'booking_reference': booking.booking_reference,
+            'guest_name': booking.guest.get_full_name() or booking.guest.email,
+            'amount': amount,
+            'currency': 'LKR',
+            'property_name': booking.property.name,
+            'room_type_name': booking.room_type.name,
+            'check_in': booking.check_in_date,
+            'check_out': booking.check_out_date,
+            'booking_url': f"https://slbooking.hotel.lk/bookings/{booking.id}/",
+        }
+        if payment is not None:
+            context.update({
+                'payment_method': dict(PAYMENT_METHOD_LABELS).get(payment.payment_method, payment.payment_method),
+                # Offline references only - a Stripe session id is not useful to a guest
+                'transaction_reference': (
+                    payment.transaction_reference if payment.payment_method != 'stripe' else ''
+                ),
+                'paid_at': payment.updated_at,
+            })
 
         subject = f"Payment Received - {booking.booking_reference}"
         html_message = render_to_string(

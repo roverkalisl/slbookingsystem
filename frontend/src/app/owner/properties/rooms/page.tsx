@@ -34,14 +34,47 @@ export default function RoomsPage() {
     }
   }
 
+  // Inline pricing editor: roomId -> draft prices
+  const [editingPriceId, setEditingPriceId] = useState<string | null>(null)
+  const [priceDraft, setPriceDraft] = useState({ base_price: '', weekend_price: '' })
+  const [savingPrice, setSavingPrice] = useState(false)
+  const [priceError, setPriceError] = useState<string | null>(null)
+
   const handleDeleteRoom = async (roomId: string) => {
     if (!confirm('Delete this room?')) return
     try {
-      // TODO: Add delete room endpoint if needed
-      // For now, handle via backend
+      await api.deleteRoom(roomId)
       setRooms(rooms.filter(r => r.id !== roomId))
-    } catch (err) {
-      alert('Failed to delete room')
+    } catch (err: any) {
+      alert(err.response?.data?.detail || err.response?.data?.error || 'Failed to delete room')
+    }
+  }
+
+  const startEditPrice = (room: any) => {
+    setEditingPriceId(room.id)
+    setPriceError(null)
+    setPriceDraft({
+      base_price: room.pricing?.base_price ? String(room.pricing.base_price) : '',
+      weekend_price: room.pricing?.weekend_price ? String(room.pricing.weekend_price) : '',
+    })
+  }
+
+  const savePrice = async (roomId: string) => {
+    if (savingPrice) return
+    setSavingPrice(true)
+    setPriceError(null)
+    try {
+      const pricing = await api.setRoomPricing(roomId, {
+        base_price: priceDraft.base_price,
+        weekend_price: priceDraft.weekend_price.trim() === '' ? null : priceDraft.weekend_price,
+      })
+      setRooms(current => current.map(r => (r.id === roomId ? { ...r, pricing } : r)))
+      setEditingPriceId(null)
+    } catch (err: any) {
+      const data = err.response?.data
+      setPriceError(data?.base_price?.[0] || data?.weekend_price?.[0] || data?.detail || data?.error || 'Unable to save price.')
+    } finally {
+      setSavingPrice(false)
     }
   }
 
@@ -89,6 +122,41 @@ export default function RoomsPage() {
                     <span>•</span>
                     <span>{room.total_rooms} unit(s)</span>
                   </div>
+                  <p className={`mt-2 text-sm font-semibold ${room.pricing ? 'text-gray-900' : 'text-red-600'}`}>
+                    {room.pricing
+                      ? `LKR ${Number(room.pricing.base_price).toLocaleString()} / night${room.pricing.weekend_price ? ` (weekend LKR ${Number(room.pricing.weekend_price).toLocaleString()})` : ''}`
+                      : 'No price set - required before submitting for approval'}
+                  </p>
+                  {editingPriceId === room.id && (
+                    <div className="mt-3 flex flex-wrap items-end gap-2">
+                      <label className="text-sm text-gray-700">
+                        Price per night *
+                        <input
+                          type="number" min="1" step="0.01" value={priceDraft.base_price}
+                          onChange={e => setPriceDraft(d => ({ ...d, base_price: e.target.value }))}
+                          className="mt-1 block w-36 rounded-lg border border-gray-300 px-2 py-1"
+                        />
+                      </label>
+                      <label className="text-sm text-gray-700">
+                        Weekend (optional)
+                        <input
+                          type="number" min="1" step="0.01" value={priceDraft.weekend_price}
+                          onChange={e => setPriceDraft(d => ({ ...d, weekend_price: e.target.value }))}
+                          className="mt-1 block w-36 rounded-lg border border-gray-300 px-2 py-1"
+                        />
+                      </label>
+                      <button
+                        type="button" onClick={() => savePrice(room.id)} disabled={savingPrice || !priceDraft.base_price}
+                        className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {savingPrice ? 'Saving...' : 'Save'}
+                      </button>
+                      <button type="button" onClick={() => setEditingPriceId(null)} className="px-2 py-1.5 text-sm text-gray-600">
+                        Cancel
+                      </button>
+                      {priceError && <p className="w-full text-sm text-red-600">{priceError}</p>}
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-2">
                   <Link
@@ -97,12 +165,15 @@ export default function RoomsPage() {
                   >
                     Photos
                   </Link>
-                  <Link
-                    href={`/owner/properties/rooms/edit?propertyId=${encodeURIComponent(propertyId)}&roomId=${room.id}`}
+                  {/* There is no room edit page in this static export - the
+                      former "Edit" link 404'd. Pricing is edited inline. */}
+                  <button
+                    type="button"
+                    onClick={() => startEditPrice(room)}
                     className="px-3 py-2 text-sm font-medium text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                   >
-                    Edit
-                  </Link>
+                    {room.pricing ? 'Edit price' : 'Set price'}
+                  </button>
                   <button
                     onClick={() => handleDeleteRoom(room.id)}
                     className="px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"

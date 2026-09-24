@@ -50,3 +50,7 @@ Thumbs.db
 *.sublime-project
 *.sublime-workspace
 backend/staticfiles/
+
+# Generated artifacts (not source)
+*.tsbuildinfo
+backend/test-output.txt

@@ -63,6 +63,12 @@ export interface Property {
   room_types?: RoomType[]
   bedrooms?: number
   max_guests?: number
+  contact?: {
+    contact_person_name?: string
+    contact_phone?: string
+    whatsapp_number?: string
+    email?: string
+  }
 }
 
 export interface PropertyType {
@@ -73,6 +79,8 @@ export interface PropertyType {
 export interface PropertyPhoto {
   id: string
   url: string
+  cloudinary_url?: string
+  is_cover?: boolean
   caption?: string
   order: number
 }
@@ -109,17 +117,25 @@ export interface Booking {
   id: string
   booking_reference: string
   room_type_id: string
+  property_id?: string
+  property_name?: string
+  room_type_name?: string
+  guest_name?: string
+  guest_email?: string
+  guest_phone?: string
   check_in_date: string
   check_out_date: string
   number_of_nights: number
   number_of_adults: number
   number_of_children: number
   total_price: number
-  status: 'pending' | 'confirmed' | 'paid' | 'completed' | 'cancelled'
-  payment_status: 'pending' | 'processing' | 'paid' | 'failed'
+  /** Booking.STATUS_CHOICES (apps/bookings/models.py) */
+  status: BookingStatus
+  /** Booking.PAYMENT_STATUS_CHOICES - set only by the backend (webhook / owner confirmation) */
+  payment_status: BookingPaymentStatus
   special_requests?: string
   created_at: string
-  guests: BookingGuest[]
+  guests?: BookingGuest[]
 }
 
 export interface BookingGuest {
@@ -130,17 +146,43 @@ export interface BookingGuest {
   is_primary_guest: boolean
 }
 
+/**
+ * Shape matches PriceBreakdownSerializer (apps/bookings/serializers.py)
+ * exactly, as returned by POST /bookings/calculate-price/.
+ */
 export interface BookingPrice {
-  base_price: number
+  nights: number
+  room_price_per_night: number
+  room_subtotal: number
   guest_fees: number
+  subtotal: number
   discount: number
+  service_fee: number
   tax: number
-  total_price: number
-  breakdown: {
-    base_total: number
-    service_fee: number
-    tax_amount: number
-  }
+  total: number
+  currency: string
+}
+
+export type BookingStatus =
+  | 'pending' | 'confirmed' | 'payment_pending' | 'paid' | 'completed'
+  | 'cancelled' | 'rejected' | 'no_show' | 'refunded' | 'partially_refunded'
+
+export type BookingPaymentStatus =
+  | 'pending' | 'processing' | 'paid' | 'failed' | 'cancelled' | 'refunded' | 'partially_refunded'
+
+/** PaymentInitiateSerializer.payment_method choices */
+export type PaymentMethod = 'stripe' | 'pay_at_property' | 'bank_transfer'
+
+/** Response data of POST /payments/initiate/ (PaymentService.initiate_payment) */
+export interface PaymentInitiation {
+  success: boolean
+  payment_id: string
+  /** Stripe: hosted Checkout URL to redirect to. Offline methods: null. */
+  payment_url: string | null
+  payment_method: PaymentMethod
+  /** Informational only - the server-side booking total that will be charged */
+  amount: number | string
+  currency: string
 }
 
 export interface Payment {
@@ -148,20 +190,23 @@ export interface Payment {
   booking_id: string
   amount: number
   currency: string
-  payment_method: 'stripe' | 'pay_at_property' | 'bank_transfer'
+  payment_method: PaymentMethod
   status: 'pending' | 'completed' | 'failed' | 'refunded'
   processor_reference?: string
   created_at: string
 }
 
+/** Matches NotificationSerializer exactly. status: 'read' means read - any
+ * other value ('pending'/'sent'/'failed') means unread; there is no
+ * separate unread/archived status on the backend. */
 export interface Notification {
   id: string
   notification_type: string
   title: string
   message: string
   channel: 'email' | 'sms' | 'push' | 'in_app'
-  status: 'unread' | 'read' | 'archived'
-  related_booking_id?: string
+  status: 'pending' | 'sent' | 'failed' | 'read'
+  related_booking?: string
   created_at: string
 }
 

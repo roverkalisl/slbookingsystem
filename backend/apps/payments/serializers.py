@@ -2,6 +2,8 @@
 Serializers for payment management.
 """
 
+from decimal import Decimal
+
 from rest_framework import serializers
 from .models import Payment, Refund
 
@@ -48,8 +50,11 @@ class RefundSerializer(serializers.ModelSerializer):
 
 class RefundRequestSerializer(serializers.Serializer):
     """Serializer for refund request"""
+    # Optional: omitted = refund the full remaining refundable balance.
+    # Never trusted on its own - PaymentService.validate_refund_amount caps it
+    # at (amount paid - already refunded).
     amount = serializers.DecimalField(
         max_digits=12, decimal_places=2,
-        required=False
+        required=False, min_value=Decimal('0.01')
     )
     reason = serializers.CharField(required=False, allow_blank=True)

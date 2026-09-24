@@ -1,0 +1,8 @@
+{% extends "emails/_base.html" %}
+{% block heading %}Booking not accepted{% endblock %}
+{% block content %}
+<p>Hi {{ guest_name }},</p>
+<p>Unfortunately, your booking request <strong>{{ booking_reference }}</strong> at {{ property_name }} could not be accepted by the property.</p>
+{% if reason %}<p style="color: #6b7280;">Reason: {{ reason }}</p>{% endif %}
+<p>No charge has been made for this booking.</p>
+{% endblock %}

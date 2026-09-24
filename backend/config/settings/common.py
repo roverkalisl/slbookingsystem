@@ -79,12 +79,20 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DB_ENGINE = config('DB_ENGINE', default='django.db.backends.sqlite3')
 
 if DB_ENGINE == 'django.db.backends.sqlite3':
-    # SQLite for local development
+    # SQLite for local development.
+    # 'timeout' sets SQLite's busy_timeout (seconds): a second connection that
+    # hits the database-file lock held by an in-progress write (e.g. another
+    # thread inside select_for_update()) waits and retries instead of
+    # immediately raising "database is locked". This mirrors how PostgreSQL's
+    # row-level locking makes a concurrent writer wait in production — without
+    # it, concurrency tests see a raw OperationalError instead of the
+    # application's own conflict handling.
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
             'NAME': BASE_DIR / config('DB_NAME', default='db.sqlite3'),
             'ATOMIC_REQUESTS': True,
+            'OPTIONS': {'timeout': 20},
         }
     }
 else:
@@ -297,3 +305,19 @@ AUTH_USER_MODEL = 'core.User'
 
 # API URL prefix
 API_PREFIX = 'api'
+
+# ============================================================================
+# Payments - Stripe (secrets from environment only, never hardcoded)
+# ============================================================================
+# Use sk_test_/whsec_ test-mode values for sandbox, sk_live_ values for live.
+# An empty secret key disables Stripe Checkout; an empty webhook secret makes
+# every webhook fail signature verification (fail closed).
+STRIPE_LIVE_SECRET_KEY = config('STRIPE_LIVE_SECRET_KEY', default='')
+STRIPE_WEBHOOK_SECRET = config('STRIPE_WEBHOOK_SECRET', default='')
+# Publishable key - only needed if the frontend ever uses Stripe.js directly;
+# hosted Checkout (redirect to session.url) does not need it.
+STRIPE_LIVE_PUBLIC_KEY = config('STRIPE_LIVE_PUBLIC_KEY', default='')
+
+# Public site URL used for Stripe Checkout success/cancel redirects
+# (reuses the existing NEXT_PUBLIC_SITE_URL deployment variable).
+SITE_URL = config('NEXT_PUBLIC_SITE_URL', default='http://localhost:3000').rstrip('/')

@@ -3,14 +3,17 @@ Views for property management.
 """
 
 import logging
+import time
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now
+from django.conf import settings
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
+import cloudinary.utils
 
 logger = logging.getLogger(__name__)
 
@@ -22,14 +25,44 @@ from .serializers import (
     PropertyTypeSerializer, AmenitySerializer, DestinationSerializer,
     PropertyListSerializer, PropertyDetailSerializer,
     PropertyCreateUpdateSerializer, PropertyApprovalSerializer,
-    RoomTypeListSerializer, RoomTypeDetailSerializer,
+    RoomTypeListSerializer, RoomTypeDetailSerializer, RoomTypeCreateSerializer,
     PropertyPhotoSerializer, RoomTypePhotoSerializer,
-    PricingSerializer, SeasonalRateSerializer,
+    PricingSerializer, PricingUpdateSerializer, SeasonalRateSerializer,
     PropertyCardSerializer, SearchFilterSerializer,
     DestinationDetailSerializer, SearchResultsSerializer
 )
 from .pricing import PricingCalculator
 from .search import PropertySearchService, DestinationSearchService, SearchFilters
+
+
+def build_cloudinary_signature(folder: str) -> dict:
+    """
+    Build a signed-upload payload for direct browser-to-Cloudinary uploads.
+
+    Used instead of an unsigned upload preset (which would need to be
+    created by hand in the Cloudinary dashboard - not something this code
+    can provision). Signing server-side with the existing API secret lets
+    the frontend upload directly to Cloudinary without ever seeing that
+    secret, while still tying the upload to a specific property/room folder.
+    """
+    api_key = settings.CLOUDINARY_STORAGE.get('API_KEY')
+    api_secret = settings.CLOUDINARY_STORAGE.get('API_SECRET')
+    cloud_name = settings.CLOUDINARY_STORAGE.get('CLOUD_NAME')
+
+    if not (api_key and api_secret and cloud_name):
+        return None
+
+    timestamp = int(time.time())
+    params_to_sign = {'timestamp': timestamp, 'folder': folder}
+    signature = cloudinary.utils.api_sign_request(params_to_sign, api_secret)
+
+    return {
+        'signature': signature,
+        'timestamp': timestamp,
+        'api_key': api_key,
+        'cloud_name': cloud_name,
+        'folder': folder,
+    }
 
 
 class PropertyTypeViewSet(viewsets.ReadOnlyModelViewSet):
@@ -159,7 +192,73 @@ class PropertyViewSet(viewsets.ModelViewSet):
         logger.info(f"[VIEWSET] Update permitted, saving")
         serializer.save()
 
-    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def perform_destroy(self, instance):
+        """Delete property (only its owner or an admin)"""
+        # Approved properties are in every authenticated user's queryset, so
+        # ownership must be checked explicitly here.
+        if instance.owner != self.request.user and not self.request.user.is_staff:
+            raise PermissionDenied("You can only delete your own properties.")
+        instance.delete()
+
+    # Minimum photos required before a property can be submitted for approval.
+    # These are MINIMUMS only - there is no product maximum (see MAX_PROPERTY_PHOTOS).
+    MIN_PROPERTY_PHOTOS = 5
+    MIN_ROOM_PHOTOS = 5
+
+    def _submission_errors(self, property_obj: Property) -> list:
+        """
+        Return every reason this property cannot yet be submitted for approval
+        (empty list when it is ready). Drafts may stay incomplete - these rules
+        apply only at submission.
+
+        Availability uses the existing architecture: rooms are bookable by
+        default and inventory comes from RoomType.total_rooms (Availability
+        rows only record owner blocks and booked dates), so a room has
+        availability configured when it offers at least 1 room.
+        """
+        errors = []
+
+        required_fields = ['name', 'description', 'address', 'city', 'district']
+        missing_fields = [field for field in required_fields if not getattr(property_obj, field)]
+        if missing_fields:
+            errors.append(f"Missing required fields: {', '.join(missing_fields)}.")
+
+        photo_count = property_obj.photos.count()
+        if photo_count < self.MIN_PROPERTY_PHOTOS:
+            errors.append(
+                f"Property must have at least {self.MIN_PROPERTY_PHOTOS} photos (currently {photo_count})."
+            )
+
+        # Only active rooms are submitted for booking; deactivated rooms are skipped.
+        rooms = list(
+            property_obj.room_types.filter(is_active=True)
+            .select_related('pricing')
+            .prefetch_related('photos')
+        )
+        if not rooms:
+            errors.append("Property must have at least one active room type.")
+
+        for room in rooms:
+            room_photo_count = len(room.photos.all())
+            if room_photo_count < self.MIN_ROOM_PHOTOS:
+                errors.append(
+                    f"Room '{room.name}' must have at least {self.MIN_ROOM_PHOTOS} photos "
+                    f"(currently {room_photo_count})."
+                )
+
+            pricing = getattr(room, 'pricing', None)
+            if pricing is None or not pricing.base_price or pricing.base_price <= 0:
+                errors.append(f"Room '{room.name}' does not have pricing configured.")
+
+            if room.total_rooms < 1:
+                errors.append(
+                    f"Availability has not been configured for room '{room.name}' "
+                    f"(number of rooms must be at least 1)."
+                )
+
+        return errors
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_path='submit-for-approval')
     def submit_for_approval(self, request, pk=None):
         """
         Owner submits property for admin approval.
@@ -179,34 +278,13 @@ class PropertyViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Validate that property has at least one room type
-        if not property_obj.room_types.exists():
+        errors = self._submission_errors(property_obj)
+        if errors:
             return Response(
                 {
-                    'error': 'Property must have at least one room type before submission',
-                    'detail': 'Please add at least one room type to your property'
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Validate required fields
-        missing_fields = []
-        if not property_obj.name:
-            missing_fields.append('name')
-        if not property_obj.description:
-            missing_fields.append('description')
-        if not property_obj.address:
-            missing_fields.append('address')
-        if not property_obj.city:
-            missing_fields.append('city')
-        if not property_obj.district:
-            missing_fields.append('district')
-
-        if missing_fields:
-            return Response(
-                {
-                    'error': f'Missing required fields: {", ".join(missing_fields)}',
-                    'detail': f'Please fill in all required fields before submission'
+                    'error': 'Property is not ready for approval. ' + ' '.join(errors),
+                    'detail': errors[0],
+                    'errors': errors,
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
@@ -246,6 +324,20 @@ class PropertyViewSet(viewsets.ModelViewSet):
         property_obj.published_at = now()
         property_obj.save()
 
+        try:
+            from apps.notifications.models import Notification
+            from apps.notifications.service import EmailChannel
+            subject = f'Your property "{property_obj.name}" has been approved'
+            message = f'Good news - "{property_obj.name}" is now live and visible to guests on SL Booking.'
+            result = EmailChannel().send(recipient=property_obj.owner.email, subject=subject, message=message)
+            Notification.objects.create(
+                recipient=property_obj.owner, notification_type='property_approved',
+                title=subject, message=message, channel='email',
+                status='sent' if result['success'] else 'failed'
+            )
+        except Exception:
+            logger.exception('Failed to send property-approved notification for property %s', property_obj.id)
+
         return Response(
             {
                 'success': True,
@@ -281,7 +373,19 @@ class PropertyViewSet(viewsets.ModelViewSet):
         property_obj.reviewed_by = request.user
         property_obj.save()
 
-        # TODO: Send email to owner with rejection reason
+        try:
+            from apps.notifications.models import Notification
+            from apps.notifications.service import EmailChannel
+            subject = f'Your property "{property_obj.name}" was not approved'
+            message = f'"{property_obj.name}" could not be approved. Reason: {rejection_reason}\n\nYou can edit and resubmit it for review.'
+            result = EmailChannel().send(recipient=property_obj.owner.email, subject=subject, message=message)
+            Notification.objects.create(
+                recipient=property_obj.owner, notification_type='property_rejected',
+                title=subject, message=message, channel='email',
+                status='sent' if result['success'] else 'failed'
+            )
+        except Exception:
+            logger.exception('Failed to send property-rejected notification for property %s', property_obj.id)
 
         return Response(
             {
@@ -388,14 +492,40 @@ class PropertyViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK
         )
 
+    # Practical upload ceiling to protect storage/DB from abuse - NOT a product
+    # limit. Owners can upload as many photos as they need well below this.
+    MAX_PROPERTY_PHOTOS = 50
+
+    @action(detail=True, methods=['get'], url_path='upload-signature')
+    def upload_signature(self, request, pk=None):
+        """
+        GET /api/properties/{id}/upload-signature/
+
+        Returns signed params so the browser can upload a property photo
+        directly to Cloudinary, then POST the resulting URL to add_photo().
+        """
+        property_obj = self.get_object()
+        if property_obj.owner != request.user and not request.user.is_staff:
+            raise PermissionDenied("You can only upload photos to your own properties.")
+
+        payload = build_cloudinary_signature(f'slbooking/properties/{property_obj.id}')
+        if payload is None:
+            return Response({'error': 'Image uploads are not configured on this server.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        return Response({'success': True, 'data': payload}, status=status.HTTP_200_OK)
+
     @photos.mapping.post
     def add_photo(self, request, pk=None):
-        """Add one owner-managed property photo, capped at five."""
+        """Add one owner-managed property photo. No fixed product maximum -
+        see MAX_PROPERTY_PHOTOS for the abuse-prevention ceiling only."""
         property_obj = self.get_object()
         if property_obj.owner != request.user and not request.user.is_staff:
             raise PermissionDenied("You can only add photos to your own properties.")
-        if property_obj.photos.count() >= 5:
-            return Response({'error': 'A property can have at most 5 main photos.'}, status=status.HTTP_400_BAD_REQUEST)
+        if property_obj.photos.count() >= self.MAX_PROPERTY_PHOTOS:
+            return Response(
+                {'error': f'A property can have at most {self.MAX_PROPERTY_PHOTOS} photos.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         cloudinary_url = request.data.get('cloudinary_url')
         cloudinary_public_id = request.data.get('cloudinary_public_id')
@@ -411,7 +541,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
         )
         return Response({'success': True, 'data': PropertyPhotoSerializer(photo).data}, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['delete'])
+    @action(detail=True, methods=['delete'], url_path='delete-photo')
     def delete_photo(self, request, photo_id=None, pk=None):
         """
         Delete a property photo.
@@ -511,7 +641,33 @@ class RoomTypeViewSet(viewsets.ModelViewSet):
 
         serializer.save()
 
-    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def perform_destroy(self, instance):
+        """Delete room type (only the property's owner or an admin)"""
+        # Rooms of approved properties are in every authenticated user's
+        # queryset, so ownership must be checked explicitly here.
+        if instance.property.owner != self.request.user and not self.request.user.is_staff:
+            raise PermissionDenied("You can only delete rooms in your own properties.")
+        instance.delete()
+
+    @action(detail=True, methods=['get'], url_path='upload-signature', permission_classes=[permissions.IsAuthenticated])
+    def upload_signature(self, request, pk=None):
+        """
+        GET /api/properties/rooms/{id}/upload-signature/
+
+        Returns signed params so the browser can upload a room photo
+        directly to Cloudinary, then POST the resulting URL to add_photo().
+        """
+        room_type = self.get_object()
+        if room_type.property.owner != request.user and not request.user.is_staff:
+            raise PermissionDenied("You can only upload photos to your own rooms.")
+
+        payload = build_cloudinary_signature(f'slbooking/rooms/{room_type.id}')
+        if payload is None:
+            return Response({'error': 'Image uploads are not configured on this server.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        return Response({'success': True, 'data': payload}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_path='add-photo')
     def add_photo(self, request, pk=None):
         """
         Add a photo to room type (currently expects Cloudinary URL in body).
@@ -523,6 +679,9 @@ class RoomTypeViewSet(viewsets.ModelViewSet):
             "is_cover": false,
             "display_order": 1
         }
+
+        Room photos have no maximum - unlimited per room, unlike property
+        photos which are capped at MAX_PROPERTY_PHOTOS for abuse prevention.
         """
         room_type = self.get_object()
 
@@ -558,7 +717,7 @@ class RoomTypeViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED
         )
 
-    @action(detail=True, methods=['delete'])
+    @action(detail=True, methods=['delete'], url_path='delete-photo')
     def delete_photo(self, request, pk=None):
         """
         Delete a room type photo.
@@ -619,18 +778,27 @@ class RoomTypeViewSet(viewsets.ModelViewSet):
             if room_type.property.owner != request.user and not request.user.is_staff:
                 raise PermissionDenied("You can only update pricing for your own rooms.")
 
-            # Get or create pricing
-            pricing, created = Pricing.objects.get_or_create(room_type=room_type)
+            # Validate owner input (positive prices only; platform fee/tax are
+            # never accepted from the client).
+            input_serializer = PricingUpdateSerializer(data=request.data)
+            input_serializer.is_valid(raise_exception=True)
+            values = input_serializer.validated_data
 
-            # Update fields
-            if 'base_price' in request.data:
-                pricing.base_price = request.data['base_price']
-            if 'weekend_price' in request.data:
-                pricing.weekend_price = request.data.get('weekend_price') or None
-            if 'extra_guest_fee' in request.data:
-                pricing.extra_guest_fee = request.data.get('extra_guest_fee') or None
-            if 'child_fee' in request.data:
-                pricing.child_fee = request.data.get('child_fee') or None
+            pricing = Pricing.objects.filter(room_type=room_type).first()
+            if pricing is None:
+                # base_price is a required column - creating pricing without it
+                # previously raised an IntegrityError (500).
+                if values.get('base_price') is None:
+                    return Response(
+                        {'error': 'base_price is required.', 'base_price': ['This field is required.']},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                pricing = Pricing(room_type=room_type, base_price=values['base_price'])
+
+            # Update only the fields that were sent
+            for field in ('base_price', 'weekend_price', 'extra_guest_fee', 'child_fee'):
+                if field in values:
+                    setattr(pricing, field, values[field])
 
             pricing.save()
 
@@ -644,20 +812,143 @@ class RoomTypeViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_200_OK
             )
 
+    @action(detail=True, methods=['get'], permission_classes=[permissions.IsAuthenticated], url_path='calendar')
+    def owner_calendar(self, request, pk=None):
+        """
+        Owner-facing per-date availability for this room type.
+
+        GET /api/properties/rooms/{id}/calendar/?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+        Defaults to the current calendar month when no range is given.
+
+        Reuses the existing Booking/Availability models - no new
+        availability model or calendar-specific storage is introduced.
+        """
+        import calendar as calendar_module
+        from datetime import date as date_cls, timedelta
+        from apps.bookings.models import Booking, Availability
+
+        room_type = self.get_object()
+        if room_type.property.owner != request.user and not request.user.is_staff:
+            raise PermissionDenied("You can only view the calendar for your own rooms.")
+
+        start_param = request.query_params.get('start_date')
+        end_param = request.query_params.get('end_date')
+        if start_param and end_param:
+            start_date = date_cls.fromisoformat(start_param)
+            end_date = date_cls.fromisoformat(end_param)
+        else:
+            today = date_cls.today()
+            start_date = today.replace(day=1)
+            last_day = calendar_module.monthrange(today.year, today.month)[1]
+            end_date = today.replace(day=last_day)
+
+        bookings = Booking.objects.filter(
+            room_type=room_type,
+            status__in=['pending', 'confirmed', 'payment_pending', 'paid', 'completed'],
+            check_in_date__lte=end_date,
+            check_out_date__gt=start_date,
+        ).values('check_in_date', 'check_out_date', 'booking_reference', 'status', 'number_of_rooms')
+
+        blocked_dates = set(
+            Availability.objects.filter(
+                room_type=room_type, date__gte=start_date, date__lte=end_date, status__in=['blocked', 'maintenance']
+            ).values_list('date', flat=True)
+        )
+
+        days = []
+        current = start_date
+        while current <= end_date:
+            # Sum rooms held, not booking rows - one booking may hold several rooms.
+            booked_count = sum(b['number_of_rooms'] for b in bookings if b['check_in_date'] <= current < b['check_out_date'])
+            is_blocked = current in blocked_dates
+            days.append({
+                'date': current.isoformat(),
+                'total_rooms': room_type.total_rooms,
+                'booked_count': booked_count,
+                'available_count': 0 if is_blocked else max(room_type.total_rooms - booked_count, 0),
+                'is_blocked': is_blocked,
+            })
+            current += timedelta(days=1)
+
+        return Response({'success': True, 'data': {'room_type_id': str(room_type.id), 'days': days}}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_path='block-dates')
+    def block_dates(self, request, pk=None):
+        """
+        Block a date range for this room type (e.g. maintenance, owner use).
+
+        POST /api/properties/rooms/{id}/block-dates/
+        { "start_date": "2026-10-01", "end_date": "2026-10-03" }
+        """
+        from datetime import date as date_cls, timedelta
+        from apps.bookings.models import Availability
+
+        room_type = self.get_object()
+        if room_type.property.owner != request.user and not request.user.is_staff:
+            raise PermissionDenied("You can only block dates for your own rooms.")
+
+        try:
+            start_date = date_cls.fromisoformat(request.data.get('start_date', ''))
+            end_date = date_cls.fromisoformat(request.data.get('end_date', ''))
+        except ValueError:
+            return Response({'error': 'start_date and end_date must be valid ISO dates (YYYY-MM-DD).'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if start_date > end_date:
+            return Response({'error': 'start_date must not be after end_date.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        current = start_date
+        while current <= end_date:
+            Availability.objects.update_or_create(
+                room_type=room_type, date=current,
+                defaults={'status': 'blocked', 'available_count': 0}
+            )
+            current += timedelta(days=1)
+
+        return Response({'success': True, 'message': 'Dates blocked successfully'}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_path='unblock-dates')
+    def unblock_dates(self, request, pk=None):
+        """
+        Release a previously blocked date range back to available.
+
+        POST /api/properties/rooms/{id}/unblock-dates/
+        { "start_date": "2026-10-01", "end_date": "2026-10-03" }
+        """
+        from datetime import date as date_cls
+        from apps.bookings.models import Availability
+
+        room_type = self.get_object()
+        if room_type.property.owner != request.user and not request.user.is_staff:
+            raise PermissionDenied("You can only unblock dates for your own rooms.")
+
+        try:
+            start_date = date_cls.fromisoformat(request.data.get('start_date', ''))
+            end_date = date_cls.fromisoformat(request.data.get('end_date', ''))
+        except ValueError:
+            return Response({'error': 'start_date and end_date must be valid ISO dates (YYYY-MM-DD).'}, status=status.HTTP_400_BAD_REQUEST)
+
+        Availability.objects.filter(
+            room_type=room_type, date__gte=start_date, date__lte=end_date, status__in=['blocked', 'maintenance']
+        ).update(status='available', available_count=room_type.total_rooms)
+
+        return Response({'success': True, 'message': 'Dates unblocked successfully'}, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['get'], permission_classes=[permissions.AllowAny])
     def calculate_price(self, request, pk=None):
         """
         Calculate price for a booking.
 
-        GET /api/properties/rooms/{id}/calculate-price/?check_in=2026-09-15&check_out=2026-09-17&adults=2&children=0
+        GET /api/properties/rooms/{id}/calculate-price/?check_in=2026-09-15&check_out=2026-09-17&adults=2&children=0&rooms=1
 
         Query Parameters:
         - check_in: Check-in date (YYYY-MM-DD)
         - check_out: Check-out date (YYYY-MM-DD)
         - adults: Number of adults
         - children: Number of children
-        - discount_percent: Discount percentage (optional)
-        - discount_fixed: Fixed discount amount (optional)
+        - rooms: Number of rooms (optional, default 1)
+
+        Client-supplied discounts are not accepted - the quote matches what a
+        booking would store.
         """
         room_type = self.get_object()
 
@@ -666,8 +957,7 @@ class RoomTypeViewSet(viewsets.ModelViewSet):
             check_out_str = request.query_params.get('check_out')
             adults = int(request.query_params.get('adults', 1))
             children = int(request.query_params.get('children', 0))
-            discount_percent = request.query_params.get('discount_percent', 0)
-            discount_fixed = request.query_params.get('discount_fixed', 0)
+            rooms = int(request.query_params.get('rooms', 1))
 
             from datetime import datetime
             check_in = datetime.strptime(check_in_str, '%Y-%m-%d').date()
@@ -679,8 +969,7 @@ class RoomTypeViewSet(viewsets.ModelViewSet):
                 check_in, check_out,
                 num_adults=adults,
                 num_children=children,
-                discount_percent=discount_percent,
-                discount_fixed=discount_fixed
+                num_rooms=rooms,
             )
 
             return Response(

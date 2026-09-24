@@ -40,3 +40,6 @@ sentry-sdk==2.0.0
 
 # HTTP Requests
 requests==2.32.3
+
+# Payments - official Stripe SDK (Checkout, webhook signature verification, refunds)
+stripe==15.6.1

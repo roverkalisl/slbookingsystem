@@ -11,6 +11,9 @@ interface RoomPhoto {
   display_order: number
 }
 
+const MAX_PHOTO_SIZE_MB = 10
+const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+
 export default function RoomPhotosPage() {
   const [params, setParams] = useState({ propertyId: '', roomId: '' })
   const [room, setRoom] = useState<any>(null)
@@ -19,6 +22,8 @@ export default function RoomPhotosPage() {
   const [error, setError] = useState<string | null>(null)
   const [photoError, setPhotoError] = useState<string | null>(null)
   const [photoSuccess, setPhotoSuccess] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -68,6 +73,56 @@ export default function RoomPhotosPage() {
     }
   }
 
+  const handleUploadPhotos = async (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return
+    const files = Array.from(fileList)
+
+    setPhotoError(null)
+    setPhotoSuccess(null)
+
+    const invalid = files.find(f => !ACCEPTED_IMAGE_TYPES.includes(f.type))
+    if (invalid) {
+      setPhotoError(`"${invalid.name}" is not a supported image type (use JPEG, PNG, or WebP).`)
+      return
+    }
+    const tooBig = files.find(f => f.size > MAX_PHOTO_SIZE_MB * 1024 * 1024)
+    if (tooBig) {
+      setPhotoError(`"${tooBig.name}" is larger than ${MAX_PHOTO_SIZE_MB}MB.`)
+      return
+    }
+
+    setUploading(true)
+    setUploadProgress({ done: 0, total: files.length })
+    let uploadedCount = 0
+    try {
+      for (const file of files) {
+        const result = await api.uploadPhoto(
+          file,
+          () => api.getRoomUploadSignature(params.roomId),
+          (data) => api.addRoomPhoto(params.roomId, data)
+        )
+        setPhotos(current => [...current, {
+          id: result.id,
+          cloudinary_url: result.cloudinary_url,
+          is_cover: result.is_cover,
+          display_order: result.display_order,
+        }])
+        uploadedCount += 1
+        setUploadProgress({ done: uploadedCount, total: files.length })
+      }
+      setPhotoSuccess(`${uploadedCount} photo(s) uploaded successfully.`)
+    } catch (err: any) {
+      setPhotoError(
+        uploadedCount > 0
+          ? `Uploaded ${uploadedCount} of ${files.length} photo(s) before an error: ${err.message || 'upload failed'}`
+          : (err.response?.data?.error || err.message || 'Upload failed. Please try again.')
+      )
+    } finally {
+      setUploading(false)
+      setUploadProgress(null)
+    }
+  }
+
   if (loading) return <div className="flex items-center justify-center min-h-screen"><p className="text-gray-600">Loading...</p></div>
 
   return (
@@ -93,6 +148,25 @@ export default function RoomPhotosPage() {
         {photoError && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-red-800">{photoError}</div>}
         {photoSuccess && <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3 text-green-800">{photoSuccess}</div>}
 
+        <label className="mt-6 flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            className="hidden"
+            disabled={uploading}
+            onChange={(e) => handleUploadPhotos(e.target.files)}
+          />
+          {uploading ? (
+            <p className="text-sm text-gray-600">Uploading {uploadProgress?.done ?? 0} of {uploadProgress?.total ?? 0}...</p>
+          ) : (
+            <>
+              <p className="font-medium text-gray-700">Click to upload room photos</p>
+              <p className="text-xs text-gray-500">JPEG, PNG, or WebP - up to {MAX_PHOTO_SIZE_MB}MB each - select multiple at once</p>
+            </>
+          )}
+        </label>
+
         {photos.length > 0 ? (
           <div className="mt-6 grid gap-4 sm:grid-cols-2 md:grid-cols-3">
             {photos.map(photo => (
@@ -110,8 +184,7 @@ export default function RoomPhotosPage() {
           </div>
         ) : (
           <div className="mt-6 rounded-lg bg-gray-50 p-8 text-center text-gray-600">
-            <p>No photos yet for this room.</p>
-            <p className="mt-2 text-sm">Upload photos via Cloudinary.</p>
+            <p>No photos yet for this room. Upload your first one above.</p>
           </div>
         )}
 

@@ -11,6 +11,8 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from django.db import transaction
 
 from apps.bookings.models import Booking, BookingGuest
+from apps.bookings.service import BookingService
+from apps.payments.service import PaymentService
 from apps.payments.models import Payment, Refund
 from .permissions import IsAdminUser
 from .admin_booking_serializers import (
@@ -37,7 +39,7 @@ class AdminBookingViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAdminUser]
     queryset = Booking.objects.all().select_related(
         'property', 'room_type', 'guest', 'property__owner'
-    ).prefetch_related('guests', 'payments', 'refunds')
+    ).prefetch_related('guests', 'payments', 'refund_set')  # Refund.booking has no related_name
     serializer_class = AdminBookingDetailSerializer
     lookup_field = 'id'
 
@@ -65,6 +67,15 @@ class AdminBookingViewSet(viewsets.ReadOnlyModelViewSet):
 
         new_status = serializer.validated_data['status']
 
+        with transaction.atomic():
+            # Lock and re-read so the transition is validated against current state
+            booking = Booking.objects.select_for_update().get(id=booking.id)
+            response = self._apply_status_transition(booking, new_status)
+
+        return response
+
+    def _apply_status_transition(self, booking, new_status):
+        """Validate and apply an admin status change (caller holds the row lock)."""
         # Validate status transition
         current_status = booking.status
 
@@ -94,6 +105,14 @@ class AdminBookingViewSet(viewsets.ReadOnlyModelViewSet):
         # Update status
         booking.status = new_status
         booking.save()
+
+        # Every allowed transition into cancelled/rejected comes from a status
+        # that held inventory, so release the rooms from the daily count.
+        if new_status in ('cancelled', 'rejected'):
+            BookingService._update_availability(
+                booking.room_type, booking.check_in_date, booking.check_out_date,
+                'available', booking.number_of_rooms
+            )
 
         return Response(
             {
@@ -137,8 +156,20 @@ class AdminBookingViewSet(viewsets.ReadOnlyModelViewSet):
         # Cancel booking within transaction
         with transaction.atomic():
             booking = Booking.objects.select_for_update().get(id=booking.id)
+            # Re-check under the lock so a concurrent cancel can't release rooms twice
+            if booking.status not in ['pending', 'confirmed', 'payment_pending', 'paid']:
+                return Response(
+                    {'error': f'Cannot cancel booking with status: {booking.status}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             booking.status = 'cancelled'
             booking.save()
+
+            # Keep the daily availability count in sync (same as guest cancel/owner reject)
+            BookingService._update_availability(
+                booking.room_type, booking.check_in_date, booking.check_out_date,
+                'available', booking.number_of_rooms
+            )
 
         return Response(
             {
@@ -195,25 +226,20 @@ class AdminPaymentViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = AdminRefundRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        # Check if payment can be refunded
-        if payment.status not in ['paid', 'partially_refunded']:
-            return Response(
-                {'error': f'Cannot refund payment with status: {payment.status}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        amount = serializer.validated_data.get('amount', payment.amount)
         reason = serializer.validated_data.get('reason', 'Admin refund')
-
-        # Validate refund amount
-        if amount > payment.amount:
-            return Response(
-                {'error': f'Refund amount ({amount}) exceeds payment amount ({payment.amount})'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
 
         # Create refund record
         with transaction.atomic():
+            # Lock the payment and apply the shared server-side limit:
+            # amount <= paid - already refunded (cumulative, not per request).
+            payment = Payment.objects.select_for_update().get(id=payment.id)
+            try:
+                amount = PaymentService.validate_refund_amount(
+                    payment, serializer.validated_data.get('amount')
+                )
+            except ValueError as e:
+                return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
             refund = Refund.objects.create(
                 booking=payment.booking,
                 payment=payment,
@@ -222,8 +248,8 @@ class AdminPaymentViewSet(viewsets.ReadOnlyModelViewSet):
                 status='pending'
             )
 
-            # Update payment status if full refund
-            if amount >= payment.amount:
+            # Update payment status from the cumulative refunded total
+            if PaymentService.refundable_amount(payment) <= 0:
                 payment.status = 'refunded'
             else:
                 payment.status = 'partially_refunded'

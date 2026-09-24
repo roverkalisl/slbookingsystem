@@ -29,14 +29,18 @@ class AvailabilitySerializer(serializers.ModelSerializer):
 class BookingListSerializer(serializers.ModelSerializer):
     """Serializer for booking list view"""
     property_name = serializers.CharField(source='property.name', read_only=True)
+    property_id = serializers.UUIDField(source='property.id', read_only=True)
     room_type_name = serializers.CharField(source='room_type.name', read_only=True)
     guest_name = serializers.SerializerMethodField()
+    guest_email = serializers.SerializerMethodField()
+    guest_phone = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
         fields = [
-            'id', 'booking_reference', 'property_name', 'room_type_name',
-            'guest_name', 'check_in_date', 'check_out_date', 'number_of_nights',
+            'id', 'booking_reference', 'property_id', 'property_name', 'room_type_name',
+            'guest_name', 'guest_email', 'guest_phone', 'number_of_adults', 'number_of_children',
+            'check_in_date', 'check_out_date', 'number_of_nights',
             'total_price', 'status', 'payment_status', 'created_at'
         ]
         read_only_fields = fields
@@ -47,6 +51,24 @@ class BookingListSerializer(serializers.ModelSerializer):
         if primary_guest:
             return f"{primary_guest.first_name} {primary_guest.last_name}"
         return obj.guest.get_full_name() or obj.guest.email
+
+    def get_guest_email(self, obj):
+        """
+        Contact info exposed here only because the queryset is already
+        ownership-filtered upstream (BookingViewSet.get_queryset): owners
+        only ever see bookings for their own properties, guests only their
+        own bookings, so no cross-user leak is possible through this field.
+        """
+        primary_guest = obj.guests.filter(is_primary_guest=True).first()
+        if primary_guest and primary_guest.email:
+            return primary_guest.email
+        return obj.guest.email
+
+    def get_guest_phone(self, obj):
+        primary_guest = obj.guests.filter(is_primary_guest=True).first()
+        if primary_guest and primary_guest.phone:
+            return primary_guest.phone
+        return obj.guest.phone
 
 
 class BookingDetailSerializer(serializers.ModelSerializer):
@@ -70,7 +92,16 @@ class BookingDetailSerializer(serializers.ModelSerializer):
 
 
 class BookingCreateSerializer(serializers.Serializer):
-    """Serializer for creating bookings"""
+    """
+    Serializer for creating bookings.
+
+    SECURITY: accepts only what the guest legitimately chooses (room, dates,
+    guest counts, room count, guest details, requests). No financial field -
+    discount_percent, discount_fixed, subtotal, discount, tax, service_fee,
+    total_price, room_price - is declared, so any such values sent by a client
+    are ignored. BookingService/PricingCalculator compute the authoritative
+    price server-side.
+    """
     room_type_id = serializers.UUIDField()
     check_in_date = serializers.DateField()
     check_out_date = serializers.DateField()
@@ -79,12 +110,6 @@ class BookingCreateSerializer(serializers.Serializer):
     number_of_rooms = serializers.IntegerField(min_value=1, default=1)
     guests = BookingGuestSerializer(many=True, required=False)
     special_requests = serializers.CharField(required=False, allow_blank=True)
-    discount_percent = serializers.DecimalField(
-        max_digits=5, decimal_places=2, min_value=0, default=Decimal('0')
-    )
-    discount_fixed = serializers.DecimalField(
-        max_digits=12, decimal_places=2, min_value=0, default=Decimal('0')
-    )
 
     def validate_check_in_date(self, value):
         """Validate check-in date is not in past"""
@@ -108,16 +133,27 @@ class BookingCreateSerializer(serializers.Serializer):
         except RoomType.DoesNotExist:
             raise serializers.ValidationError("Invalid room type")
 
-        # Validate occupancy
+        # Validate occupancy against the combined capacity of all requested
+        # rooms (limits are per room; BookingService applies the same rule).
+        num_rooms = data.get('number_of_rooms', 1)
         total_occupants = data['number_of_adults'] + data['number_of_children']
-        if data['number_of_adults'] > room_type.max_adults:
+        max_adults = room_type.max_adults * num_rooms
+        max_children = room_type.max_children * num_rooms
+        max_occupancy = room_type.total_occupancy * num_rooms
+        rooms_label = "Room" if num_rooms == 1 else f"{num_rooms} rooms"
+        if data['number_of_adults'] > max_adults:
             raise serializers.ValidationError(
-                f"Room can accommodate maximum {room_type.max_adults} adults"
+                f"{rooms_label} can accommodate maximum {max_adults} adults"
             )
 
-        if total_occupants > room_type.total_occupancy:
+        if data['number_of_children'] > max_children:
             raise serializers.ValidationError(
-                f"Room can accommodate maximum {room_type.total_occupancy} guests"
+                f"{rooms_label} can accommodate maximum {max_children} children"
+            )
+
+        if total_occupants > max_occupancy:
+            raise serializers.ValidationError(
+                f"{rooms_label} can accommodate maximum {max_occupancy} guests"
             )
 
         return data
@@ -129,23 +165,24 @@ class BookingCancelSerializer(serializers.Serializer):
 
 
 class PriceCalculationSerializer(serializers.Serializer):
-    """Serializer for price calculation request"""
+    """
+    Serializer for price calculation request.
+
+    Mirrors BookingCreateSerializer so the quoted price is exactly what a
+    booking would store - no client-supplied discount is accepted.
+    """
     room_type_id = serializers.UUIDField()
     check_in_date = serializers.DateField()
     check_out_date = serializers.DateField()
     number_of_adults = serializers.IntegerField(min_value=1, default=1)
     number_of_children = serializers.IntegerField(min_value=0, default=0)
-    discount_percent = serializers.DecimalField(
-        max_digits=5, decimal_places=2, min_value=0, default=Decimal('0')
-    )
-    discount_fixed = serializers.DecimalField(
-        max_digits=12, decimal_places=2, min_value=0, default=Decimal('0')
-    )
+    number_of_rooms = serializers.IntegerField(min_value=1, default=1)
 
 
 class PriceBreakdownSerializer(serializers.Serializer):
     """Serializer for price breakdown response"""
     nights = serializers.IntegerField()
+    num_rooms = serializers.IntegerField()
     room_price_per_night = serializers.DecimalField(max_digits=12, decimal_places=2)
     room_subtotal = serializers.DecimalField(max_digits=12, decimal_places=2)
     guest_fees = serializers.DecimalField(max_digits=12, decimal_places=2)

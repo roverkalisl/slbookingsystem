@@ -16,7 +16,7 @@ services:
     buildCommand: bash build.sh
 
     # Pre-deploy: Run migrations and load fixtures
-    preDeployCommand: python manage.py migrate --noinput --settings=config.settings.production && python manage.py loaddata property_types --settings=config.settings.production
+    preDeployCommand: python manage.py migrate --noinput --settings=config.settings.production && python manage.py seed_master_data --settings=config.settings.production
 
     # Start: Execute start.sh script
     # start.sh: Start Gunicorn (serves both API and static frontend)

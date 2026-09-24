@@ -1,0 +1,15 @@
+{% extends "emails/_base.html" %}
+{% block heading %}New booking received{% endblock %}
+{% block content %}
+<p>You have a new booking to review.</p>
+<table style="width: 100%; border-collapse: collapse; margin-top: 12px;">
+  <tr><td style="padding: 4px 0; color: #6b7280;">Booking reference</td><td style="text-align: right; font-weight: bold;">{{ booking_reference }}</td></tr>
+  <tr><td style="padding: 4px 0; color: #6b7280;">Guest</td><td style="text-align: right;">{{ guest_name }} ({{ guest_email }})</td></tr>
+  <tr><td style="padding: 4px 0; color: #6b7280;">Check-in</td><td style="text-align: right;">{{ check_in }}</td></tr>
+  <tr><td style="padding: 4px 0; color: #6b7280;">Check-out</td><td style="text-align: right;">{{ check_out }}</td></tr>
+  <tr><td style="padding: 4px 0; color: #6b7280;">Rooms</td><td style="text-align: right;">{{ rooms }}</td></tr>
+  <tr><td style="padding: 4px 0; color: #6b7280;">Guests</td><td style="text-align: right;">{{ adults }} adults, {{ children }} children</td></tr>
+  <tr><td style="padding: 4px 0; color: #6b7280;">Total</td><td style="text-align: right; font-weight: bold;">LKR {{ total_price }}</td></tr>
+</table>
+<p style="margin-top: 16px;">Please log in to your owner dashboard to confirm or reject this booking.</p>
+{% endblock %}

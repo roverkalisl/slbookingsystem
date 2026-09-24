@@ -45,10 +45,9 @@ export default function AdminDashboard() {
         // Load dashboard stats from real admin API
         const dashStats = await api.getAdminDashboardStats()
 
-        // Load pending properties for display
-        const propsResponse = await api.getProperties()
-        const allProps = propsResponse.results || []
-        const pendingProps = allProps.filter(p => p.status === 'pending_approval')
+        // Load pending properties for display (admin endpoint - the guest
+        // search endpoint only returns approved properties)
+        const pendingProps = await api.getAdminProperties('pending_approval')
         setProperties(pendingProps)
 
         // Set all stats from API

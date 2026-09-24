@@ -1,0 +1,12 @@
+{% extends "emails/_base.html" %}
+{% block heading %}Booking cancelled{% endblock %}
+{% block content %}
+<p>Hi {{ guest_name }},</p>
+<p>Your booking <strong>{{ booking_reference }}</strong> has been cancelled.</p>
+{% if refund_amount %}
+<table style="width: 100%; border-collapse: collapse; margin-top: 12px;">
+  <tr><td style="padding: 4px 0; color: #6b7280;">Refund amount</td><td style="text-align: right; font-weight: bold;">LKR {{ refund_amount }}</td></tr>
+  <tr><td style="padding: 4px 0; color: #6b7280;">Refund percentage</td><td style="text-align: right;">{{ refund_percent }}%</td></tr>
+</table>
+{% endif %}
+{% endblock %}

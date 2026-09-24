@@ -380,9 +380,9 @@ SIMPLE_JWT['SIGNING_KEY'] = SECRET_KEY  # noqa
 # PAYMENT GATEWAYS - PRODUCTION CREDENTIALS
 # ============================================================================
 
-STRIPE_LIVE_PUBLIC_KEY = config('STRIPE_LIVE_PUBLIC_KEY', default='')
-STRIPE_LIVE_SECRET_KEY = config('STRIPE_LIVE_SECRET_KEY', default='')
-STRIPE_WEBHOOK_SECRET = config('STRIPE_WEBHOOK_SECRET', default='')
+# Stripe settings (STRIPE_LIVE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,
+# STRIPE_LIVE_PUBLIC_KEY, SITE_URL) are defined in common.py from the
+# environment, so development/test use the same names.
 
 # ============================================================================
 # THIRD-PARTY SERVICES

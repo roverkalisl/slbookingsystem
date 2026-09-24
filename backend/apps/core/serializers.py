@@ -180,8 +180,8 @@ class RegisterSerializer(serializers.Serializer):
         role = Role.objects.get(name=validated_data['role'])
         user.roles.add(role)
 
-        # Create user profile
-        UserProfile.objects.create(user=user)
+        # UserProfile is created automatically by the post_save signal in
+        # apps.core.signals - no explicit creation needed here.
 
         return user
 

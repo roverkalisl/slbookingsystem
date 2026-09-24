@@ -36,8 +36,10 @@ export default function AdminProperties() {
   const loadProperties = async () => {
     try {
       setLoading(true)
-      const response = await api.getProperties()
-      const data = (response.results || []).map(prop => ({
+      // All statuses from the admin-capable endpoint (the guest search
+      // endpoint only returns approved properties, so pending ones never showed)
+      const allProperties = await api.getAdminProperties()
+      const data = allProperties.map(prop => ({
         ...prop,
         isPending: prop.status === 'pending_approval',
       }))

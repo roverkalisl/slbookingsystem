@@ -29,7 +29,7 @@ class Amenity(models.Model):
     """Amenities that can be assigned to properties and rooms"""
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=100, unique=True)
-    slug = models.SlugField(unique=True)
+    slug = models.SlugField(unique=True, blank=True)
     icon_url = models.URLField(blank=True, null=True)
     category = models.CharField(max_length=50, blank=True, null=True)
     is_active = models.BooleanField(default=True)
@@ -41,6 +41,11 @@ class Amenity(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+        super().save(*args, **kwargs)
 
 
 class Destination(models.Model):

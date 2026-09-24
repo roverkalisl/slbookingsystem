@@ -80,10 +80,15 @@ class PricingCalculator:
         num_adults: int = 1,
         num_children: int = 0,
         discount_percent: Decimal = Decimal('0'),
-        discount_fixed: Decimal = Decimal('0')
+        discount_fixed: Decimal = Decimal('0'),
+        num_rooms: int = 1
     ) -> Dict[str, Decimal]:
         """
         Calculate total booking price with all fees and taxes.
+
+        num_rooms identical rooms are charged for every night. The per-date
+        rates (and room_price_per_night) stay per single room; only the room
+        subtotal is multiplied, so fees/taxes derived from it scale once.
 
         Returns: Dictionary with price breakdown
         """
@@ -92,18 +97,20 @@ class PricingCalculator:
         num_nights = (check_out - check_in).days
         if num_nights <= 0:
             raise ValueError("Check-out date must be after check-in date")
+        if num_rooms < 1:
+            raise ValueError("At least 1 room must be booked")
 
         # 2. Get nightly rates for each date
         date_rates = self.get_date_range_rates(check_in, check_out)
 
-        # 3. Calculate room subtotal
-        room_subtotal = sum(rate for _, rate in date_rates)
+        # 3. Calculate room subtotal (per-room nightly rates x number of rooms)
+        room_subtotal = sum(rate for _, rate in date_rates) * num_rooms
 
         # 4. Add guest fees
         guest_fees = Decimal('0')
 
         # Extra adult fee
-        included_adults = 2  # Default 2 adults included in base price
+        included_adults = 2 * num_rooms  # Default 2 adults included per room in base price
         if num_adults > included_adults:
             extra_adults = num_adults - included_adults
             if self.pricing.extra_guest_fee:
@@ -142,6 +149,7 @@ class PricingCalculator:
 
         return {
             'nights': num_nights,
+            'num_rooms': num_rooms,
             'room_price_per_night': date_rates[0][1] if date_rates else Decimal('0'),
             'room_subtotal': room_subtotal,
             'guest_fees': guest_fees,

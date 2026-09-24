@@ -48,7 +48,8 @@ class AdminBookingDetailSerializer(serializers.ModelSerializer):
     guest_phone = serializers.CharField(source='guest.phone', read_only=True)
     guests = AdminBookingGuestSerializer(many=True, read_only=True)
     payments = AdminPaymentSerializer(many=True, read_only=True)
-    refunds = AdminRefundSerializer(many=True, read_only=True)
+    # Refund.booking has no related_name, so the reverse accessor is refund_set
+    refunds = AdminRefundSerializer(source='refund_set', many=True, read_only=True)
 
     class Meta:
         model = Booking

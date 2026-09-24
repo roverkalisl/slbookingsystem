@@ -11,6 +11,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useAuth } from '@/stores/auth'
 import { api } from '@/lib/api'
+import { useDynamicRouteId } from '@/lib/useDynamicRouteId'
 import type { Property, BookingPrice } from '@/types'
 import {
   Star,
@@ -24,26 +25,40 @@ import {
 
 export function PropertyContent() {
   const params = useParams()
-  const propertyId = params.id as string
+  // Real id from the URL - useParams() returns the static-export placeholder '0'
+  const propertyId = useDynamicRouteId(params.id as string)
   const { isAuthenticated } = useAuth()
 
   const [property, setProperty] = useState<Property | null>(null)
   const [loading, setLoading] = useState(true)
   const [photoIndex, setPhotoIndex] = useState(0)
+  const [selectedRoomTypeId, setSelectedRoomTypeId] = useState<string>('')
   const [checkIn, setCheckIn] = useState('')
   const [checkOut, setCheckOut] = useState('')
   const [guests, setGuests] = useState(2)
   const [priceBreakdown, setPriceBreakdown] = useState<BookingPrice | null>(null)
   const [calculating, setCalculating] = useState(false)
   const [bookingLoading, setBookingLoading] = useState(false)
+  const [availability, setAvailability] = useState<{ available: boolean; available_count: number } | null>(null)
+  const [checkingAvailability, setCheckingAvailability] = useState(false)
+  const [bookingError, setBookingError] = useState<string | null>(null)
+
+  const selectedRoom = property?.room_types?.find(rt => rt.id === selectedRoomTypeId) || null
 
   // Load property
   useEffect(() => {
+    if (!propertyId) return
     async function loadProperty() {
       try {
         setLoading(true)
-        const data = await api.getProperty(propertyId)
+        const data = await api.getProperty(propertyId as string)
         setProperty(data)
+        // Auto-select only when there's exactly one room type - otherwise
+        // the guest must explicitly choose (never silently default to [0]
+        // when there's more than one option).
+        if (data.room_types?.length === 1) {
+          setSelectedRoomTypeId(data.room_types[0].id)
+        }
       } catch (error) {
         console.error('Failed to load property:', error)
       } finally {
@@ -54,15 +69,18 @@ export function PropertyContent() {
     loadProperty()
   }, [propertyId])
 
-  // Calculate price when dates change
+  // Calculate price when the selected room or dates change
   useEffect(() => {
     async function calculatePrice() {
-      if (!property || !checkIn || !checkOut || !property.room_types?.[0]) return
+      if (!selectedRoomTypeId || !checkIn || !checkOut) {
+        setPriceBreakdown(null)
+        return
+      }
 
       try {
         setCalculating(true)
         const price = await api.calculatePrice({
-          room_type_id: property.room_types[0].id,
+          room_type_id: selectedRoomTypeId,
           check_in: checkIn,
           check_out: checkOut,
           num_adults: guests,
@@ -70,6 +88,7 @@ export function PropertyContent() {
         setPriceBreakdown(price)
       } catch (error) {
         console.error('Failed to calculate price:', error)
+        setPriceBreakdown(null)
       } finally {
         setCalculating(false)
       }
@@ -77,7 +96,32 @@ export function PropertyContent() {
 
     const timer = setTimeout(calculatePrice, 500)
     return () => clearTimeout(timer)
-  }, [checkIn, checkOut, guests, property])
+  }, [checkIn, checkOut, guests, selectedRoomTypeId])
+
+  // Availability pre-check (UX only - the backend re-validates authoritatively
+  // inside booking creation, so this never replaces that check).
+  useEffect(() => {
+    async function runAvailabilityCheck() {
+      if (!selectedRoomTypeId || !checkIn || !checkOut) {
+        setAvailability(null)
+        return
+      }
+
+      try {
+        setCheckingAvailability(true)
+        const result = await api.checkAvailability(selectedRoomTypeId, checkIn, checkOut)
+        setAvailability(result)
+      } catch (error) {
+        console.error('Failed to check availability:', error)
+        setAvailability(null)
+      } finally {
+        setCheckingAvailability(false)
+      }
+    }
+
+    const timer = setTimeout(runAvailabilityCheck, 500)
+    return () => clearTimeout(timer)
+  }, [checkIn, checkOut, selectedRoomTypeId])
 
   const handleBooking = async () => {
     if (!isAuthenticated) {
@@ -85,24 +129,42 @@ export function PropertyContent() {
       return
     }
 
+    setBookingError(null)
+
+    if (!selectedRoomTypeId) {
+      setBookingError('Please select a room type first.')
+      return
+    }
+
     if (!checkIn || !checkOut) {
-      alert('Please select check-in and check-out dates')
+      setBookingError('Please select check-in and check-out dates.')
       return
     }
 
     try {
       setBookingLoading(true)
       const booking = await api.createBooking({
-        room_type_id: property?.room_types?.[0]?.id || '',
+        room_type_id: selectedRoomTypeId,
         check_in: checkIn,
         check_out: checkOut,
         num_adults: guests,
         num_children: 0,
       })
-      window.location.href = `/booking/${booking.id}`
-    } catch (error) {
+      // /booking/{id} has no page in this static export - send the guest to
+      // My Bookings, where the booking (and its payment action) is listed.
+      window.location.href = '/bookings'
+    } catch (error: any) {
       console.error('Failed to create booking:', error)
-      alert('Failed to create booking. Please try again.')
+      // Backend is the final authority on availability (HTTP 409) even if
+      // the client-side pre-check above said it looked available.
+      if (error.response?.status === 409) {
+        setBookingError(error.response.data?.detail || error.response.data?.error || 'The selected room is no longer available for these dates.')
+      } else if (error.response?.data) {
+        const data = error.response.data
+        setBookingError(typeof data === 'string' ? data : (data.detail || data.error || 'Failed to create booking. Please try again.'))
+      } else {
+        setBookingError('Failed to create booking. Please try again.')
+      }
     } finally {
       setBookingLoading(false)
     }
@@ -224,6 +286,67 @@ export function PropertyContent() {
             <div className="badge mb-4">{property.property_type.name}</div>
           </div>
 
+          {/* Room Types - guest must explicitly choose when there's more than one */}
+          {property.room_types && property.room_types.length > 0 && (
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold mb-4">Available Rooms</h2>
+              <div className="space-y-4">
+                {property.room_types.map((room) => {
+                  const isSelected = room.id === selectedRoomTypeId
+                  const roomPhoto = room.photos?.[0]
+                  const nightlyPrice = room.pricing?.base_price
+                  return (
+                    <div
+                      key={room.id}
+                      className={`rounded-lg border-2 p-4 transition-colors ${isSelected ? 'border-primary bg-blue-50' : 'border-gray-200'}`}
+                    >
+                      <div className="flex flex-col sm:flex-row gap-4">
+                        {roomPhoto && (
+                          <div className="relative h-32 w-full sm:w-48 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100">
+                            <Image src={roomPhoto.cloudinary_url || (roomPhoto as any).url} alt={room.name} fill className="object-cover" />
+                          </div>
+                        )}
+                        <div className="flex-1">
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <h3 className="text-lg font-bold">{room.name}</h3>
+                              {room.description && <p className="text-sm text-gray-600 mt-1">{room.description}</p>}
+                            </div>
+                            {nightlyPrice != null && (
+                              <div className="text-right flex-shrink-0">
+                                <p className="text-lg font-bold text-primary">LKR {Number(nightlyPrice).toLocaleString()}</p>
+                                <p className="text-xs text-gray-500">per night</p>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-3 mt-2 text-sm text-gray-600">
+                            <span>{room.max_adults} adult{room.max_adults === 1 ? '' : 's'}</span>
+                            {room.max_children > 0 && <span>{room.max_children} child{room.max_children === 1 ? '' : 'ren'}</span>}
+                            {(room as any).number_of_beds && <span>{(room as any).number_of_beds} bed(s)</span>}
+                            {(room as any).total_rooms && <span>{(room as any).total_rooms} unit(s) available</span>}
+                          </div>
+                          {room.amenities && room.amenities.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {room.amenities.map((a: any) => (
+                                <span key={a.id} className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">{a.amenity_name || a.name}</span>
+                              ))}
+                            </div>
+                          )}
+                          <button
+                            onClick={() => setSelectedRoomTypeId(room.id)}
+                            className={`mt-3 px-4 py-2 rounded-lg text-sm font-semibold ${isSelected ? 'bg-primary text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
+                          >
+                            {isSelected ? 'Selected' : 'Select This Room'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Amenities */}
           {property.amenities.length > 0 && (
             <div className="mb-8">
@@ -244,6 +367,49 @@ export function PropertyContent() {
             <h2 className="text-2xl font-bold mb-4">About This Property</h2>
             <p className="text-gray-600 leading-relaxed">{property.description || 'No description available'}</p>
           </div>
+
+          {/* House Rules */}
+          {property.house_rules && (
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold mb-4">House Rules</h2>
+              <p className="text-gray-600 leading-relaxed whitespace-pre-wrap">{property.house_rules}</p>
+            </div>
+          )}
+
+          {/* Nearby Attractions */}
+          {property.nearby_attractions && (
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold mb-4">Nearby Attractions</h2>
+              <p className="text-gray-600 leading-relaxed whitespace-pre-wrap">{property.nearby_attractions}</p>
+            </div>
+          )}
+
+          {/* Contact Property */}
+          {(property.contact?.whatsapp_number || property.contact?.email) && (
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold mb-4">Contact This Property</h2>
+              <div className="flex flex-wrap gap-3">
+                {property.contact?.whatsapp_number && (
+                  <a
+                    href={`https://wa.me/${property.contact.whatsapp_number.replace(/[^\d]/g, '')}?text=${encodeURIComponent(`Hi, I have a question about ${property.name}.`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-5 py-3 bg-green-50 text-green-700 rounded-lg font-medium hover:bg-green-100"
+                  >
+                    WhatsApp
+                  </a>
+                )}
+                {property.contact?.email && (
+                  <a
+                    href={`mailto:${property.contact.email}?subject=${encodeURIComponent(`Question about ${property.name}`)}`}
+                    className="px-5 py-3 bg-blue-50 text-blue-700 rounded-lg font-medium hover:bg-blue-100"
+                  >
+                    Email
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Booking Sidebar */}
@@ -251,12 +417,18 @@ export function PropertyContent() {
           <div className="card p-6 sticky top-20">
             {/* Price */}
             <div className="mb-6">
-              <p className="text-gray-600 text-sm">Starting from</p>
+              <p className="text-gray-600 text-sm">{selectedRoom ? selectedRoom.name : 'Starting from'}</p>
               <p className="text-3xl font-bold text-primary">
-                LKR {property.price_range_min.toLocaleString()}
+                LKR {Number(selectedRoom?.pricing?.base_price ?? property.price_range_min ?? 0).toLocaleString()}
               </p>
               <p className="text-gray-600 text-sm">per night</p>
             </div>
+
+            {!selectedRoomTypeId && (
+              <div className="mb-4 rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
+                Select a room above to continue booking.
+              </div>
+            )}
 
             {/* Booking Form */}
             <div className="space-y-4">
@@ -265,6 +437,7 @@ export function PropertyContent() {
                 <input
                   type="date"
                   value={checkIn}
+                  min={new Date().toISOString().split('T')[0]}
                   onChange={(e) => setCheckIn(e.target.value)}
                   className="w-full border border-gray-300 rounded px-3 py-2"
                 />
@@ -275,6 +448,7 @@ export function PropertyContent() {
                 <input
                   type="date"
                   value={checkOut}
+                  min={checkIn || new Date().toISOString().split('T')[0]}
                   onChange={(e) => setCheckOut(e.target.value)}
                   className="w-full border border-gray-300 rounded px-3 py-2"
                 />
@@ -292,34 +466,64 @@ export function PropertyContent() {
               </div>
             </div>
 
+            {/* Availability */}
+            {checkingAvailability && (
+              <p className="mt-4 text-sm text-gray-500">Checking availability...</p>
+            )}
+            {!checkingAvailability && availability && (
+              availability.available ? (
+                <p className="mt-4 text-sm text-green-700 bg-green-50 rounded-lg p-3">
+                  Available ({availability.available_count} room{availability.available_count === 1 ? '' : 's'} left for these dates)
+                </p>
+              ) : (
+                <p className="mt-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">
+                  Not available for these dates. Please choose different dates.
+                </p>
+              )
+            )}
+
             {/* Price Breakdown */}
             {priceBreakdown && (
               <div className="mt-6 pt-6 border-t border-gray-200 space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Base price</span>
-                  <span>LKR {priceBreakdown.base_price.toLocaleString()}</span>
+                  <span className="text-gray-600">Room ({priceBreakdown.nights} night{priceBreakdown.nights === 1 ? '' : 's'})</span>
+                  <span>LKR {Number(priceBreakdown.room_subtotal).toLocaleString()}</span>
                 </div>
-                {priceBreakdown.guest_fees > 0 && (
+                {Number(priceBreakdown.guest_fees) > 0 && (
                   <div className="flex justify-between">
                     <span className="text-gray-600">Guest fees</span>
-                    <span>LKR {priceBreakdown.guest_fees.toLocaleString()}</span>
+                    <span>LKR {Number(priceBreakdown.guest_fees).toLocaleString()}</span>
+                  </div>
+                )}
+                {Number(priceBreakdown.discount) > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Discount</span>
+                    <span>-LKR {Number(priceBreakdown.discount).toLocaleString()}</span>
                   </div>
                 )}
                 <div className="flex justify-between">
+                  <span className="text-gray-600">Service fee</span>
+                  <span>LKR {Number(priceBreakdown.service_fee).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
                   <span className="text-gray-600">Tax</span>
-                  <span>LKR {priceBreakdown.tax.toLocaleString()}</span>
+                  <span>LKR {Number(priceBreakdown.tax).toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between font-bold text-lg pt-2 border-t">
                   <span>Total</span>
-                  <span className="text-primary">LKR {priceBreakdown.total_price.toLocaleString()}</span>
+                  <span className="text-primary">LKR {Number(priceBreakdown.total).toLocaleString()}</span>
                 </div>
               </div>
+            )}
+
+            {bookingError && (
+              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{bookingError}</div>
             )}
 
             {/* Book Button */}
             <button
               onClick={handleBooking}
-              disabled={!checkIn || !checkOut || bookingLoading || calculating}
+              disabled={!selectedRoomTypeId || !checkIn || !checkOut || bookingLoading || calculating || (availability !== null && !availability.available)}
               className="w-full btn-primary mt-6 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {bookingLoading ? 'Booking...' : 'Book Now'}

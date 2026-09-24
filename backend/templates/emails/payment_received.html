@@ -1,0 +1,17 @@
+{% extends "emails/_base.html" %}
+{% block heading %}Payment received{% endblock %}
+{% block content %}
+<p>Hi {{ guest_name }},</p>
+<p>We have received your payment for your booking at <strong>{{ property_name }}</strong>. Thank you!</p>
+<table style="width: 100%; border-collapse: collapse; margin-top: 12px;">
+  <tr><td style="padding: 4px 0; color: #6b7280;">Booking reference</td><td style="text-align: right; font-weight: bold;">{{ booking_reference }}</td></tr>
+  <tr><td style="padding: 4px 0; color: #6b7280;">Room</td><td style="text-align: right;">{{ room_type_name }}</td></tr>
+  <tr><td style="padding: 4px 0; color: #6b7280;">Check-in</td><td style="text-align: right;">{{ check_in }}</td></tr>
+  <tr><td style="padding: 4px 0; color: #6b7280;">Check-out</td><td style="text-align: right;">{{ check_out }}</td></tr>
+  <tr><td style="padding: 4px 0; color: #6b7280;">Amount paid</td><td style="text-align: right; font-weight: bold;">{{ currency }} {{ amount }}</td></tr>
+  {% if payment_method %}<tr><td style="padding: 4px 0; color: #6b7280;">Payment method</td><td style="text-align: right;">{{ payment_method }}</td></tr>{% endif %}
+  {% if transaction_reference %}<tr><td style="padding: 4px 0; color: #6b7280;">Payment reference</td><td style="text-align: right;">{{ transaction_reference }}</td></tr>{% endif %}
+  {% if paid_at %}<tr><td style="padding: 4px 0; color: #6b7280;">Payment date</td><td style="text-align: right;">{{ paid_at|date:"j M Y" }}</td></tr>{% endif %}
+</table>
+<p style="margin-top: 16px;"><a href="{{ booking_url }}" style="color: #1d4ed8;">View your booking</a></p>
+{% endblock %}

@@ -10,7 +10,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch, MagicMock
 
-from .models import Payment, PaymentMethod
+from .models import Payment
 from .service import (
     PaymentService, StripePaymentProcessor, PayAtPropertyProcessor,
     BankTransferProcessor, PaymentProcessor, PaymentWebhookHandler
@@ -28,21 +28,6 @@ class PaymentServiceTestCase(TestCase):
         guest_role, _ = Role.objects.get_or_create(name='guest')
         self.guest = User.objects.create_user(email='guest@example.com', password='test')
         UserRole.objects.create(user=self.guest, role=guest_role)
-
-        # Create payment method
-        self.stripe_method = PaymentMethod.objects.create(
-            code='stripe',
-            name='Stripe Card',
-            processor_type='stripe',
-            is_active=True
-        )
-
-        self.pay_at_property = PaymentMethod.objects.create(
-            code='pay_at_property',
-            name='Pay at Property',
-            processor_type='pay_at_property',
-            is_active=True
-        )
 
     def test_get_processor_stripe(self):
         """Test getting Stripe processor"""
