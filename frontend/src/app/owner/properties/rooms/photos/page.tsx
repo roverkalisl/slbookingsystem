@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import RoomsNotApplicable from '@/components/RoomsNotApplicable'
 
 interface RoomPhoto {
   id: string
@@ -27,6 +28,7 @@ export default function RoomPhotosPage() {
   const [photoSuccess, setPhotoSuccess] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null)
+  const [isVilla, setIsVilla] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -41,6 +43,11 @@ export default function RoomPhotosPage() {
       setLoading(true)
       // Get property to verify ownership, then get room
       const property = await api.getProperty(propertyId)
+      if (property.booking_mode === 'whole_property') {
+        // Entry Villa: no rooms - its property photos are the villa's gallery
+        setIsVilla(true)
+        return
+      }
       const rooms = await api.getPropertyRooms(propertyId)
       const foundRoom = rooms.find((r: any) => r.id === roomId)
 
@@ -141,6 +148,7 @@ export default function RoomPhotosPage() {
   const roomIsFull = photos.length >= MAX_ROOM_PHOTOS
 
   if (loading) return <div className="flex items-center justify-center min-h-screen"><p className="text-gray-600">Loading...</p></div>
+  if (isVilla) return <RoomsNotApplicable propertyId={params.propertyId} />
 
   return (
     <div className="mx-auto max-w-5xl pb-10">

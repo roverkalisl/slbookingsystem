@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
+import VillaDetailsSection from './VillaDetailsSection'
 
 interface Photo {
   id: string
@@ -136,10 +137,13 @@ export default function PropertyManagementClient({ propertyId }: { propertyId: s
     }
   }
 
+  const isVilla = property?.booking_mode === 'whole_property'
+
   const tabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'photos', label: 'Photos' },
-    { id: 'rooms', label: 'Rooms' },
+    // Entry Villa is booked as a whole: villa-level details replace rooms
+    { id: 'rooms', label: isVilla ? 'Villa Details' : 'Rooms' },
     { id: 'house-rules', label: 'House Rules' },
     { id: 'nearby', label: 'Nearby Places' },
     { id: 'approval', label: 'Submit for Approval' },
@@ -238,8 +242,17 @@ export default function PropertyManagementClient({ propertyId }: { propertyId: s
             </section>
           )}
 
+          {/* Villa Details (Entry Villa - whole property) */}
+          {activeTab === 'rooms' && isVilla && (
+            <VillaDetailsSection
+              propertyId={propertyId}
+              editable={['draft', 'rejected'].includes(property.status)}
+              onSaved={loadProperty}
+            />
+          )}
+
           {/* Rooms Tab */}
-          {activeTab === 'rooms' && (
+          {activeTab === 'rooms' && !isVilla && (
             <section className="rounded-lg bg-white p-6 shadow">
               <div className="flex items-center justify-between mb-6">
                 <div>
@@ -332,8 +345,14 @@ export default function PropertyManagementClient({ propertyId }: { propertyId: s
                 <ul className="ml-4 space-y-1 text-sm text-gray-700">
                   <li>✓ Property details complete</li>
                   <li>{photos.length >= 5 ? '✓' : '✗'} At least 5 property photos ({photos.length} uploaded)</li>
-                  <li>{property.room_types?.length > 0 ? '✓' : '✗'} At least 1 room type</li>
-                  <li>• Every room has 1–5 photos and pricing configured</li>
+                  {isVilla ? (
+                    <li>{property.room_types?.length > 0 ? '✓' : '✗'} Villa details set (capacity, beds and nightly price)</li>
+                  ) : (
+                    <>
+                      <li>{property.room_types?.length > 0 ? '✓' : '✗'} At least 1 room type</li>
+                      <li>• Every room has 1–5 photos and pricing configured</li>
+                    </>
+                  )}
                 </ul>
               </div>
               {submitErrors && (

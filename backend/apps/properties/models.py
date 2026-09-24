@@ -11,10 +11,23 @@ from apps.core.models import User
 
 class PropertyType(models.Model):
     """Property type configuration"""
+    # How properties of this type are booked:
+    # - room_types: Property -> owner-managed Room Types -> booking (hotels, resorts...)
+    # - whole_property: the property itself is the bookable unit (e.g. "Entry Villa");
+    #   a single system-managed RoomType (is_property_unit=True) carries its
+    #   capacity, pricing and availability so the booking architecture is unchanged.
+    BOOKING_MODE_ROOM_TYPES = 'room_types'
+    BOOKING_MODE_WHOLE_PROPERTY = 'whole_property'
+    BOOKING_MODE_CHOICES = [
+        (BOOKING_MODE_ROOM_TYPES, 'Room types'),
+        (BOOKING_MODE_WHOLE_PROPERTY, 'Whole property'),
+    ]
+
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=50, unique=True)
     description = models.TextField(blank=True, null=True)
     is_active = models.BooleanField(default=True)
+    booking_mode = models.CharField(max_length=20, choices=BOOKING_MODE_CHOICES, default=BOOKING_MODE_ROOM_TYPES)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -153,6 +166,19 @@ class Property(models.Model):
             self.slug = slugify(self.name)
         super().save(*args, **kwargs)
 
+    @property
+    def is_whole_property(self) -> bool:
+        """True when the property itself is the bookable unit (e.g. Entry Villa)."""
+        return bool(
+            self.property_type_id
+            and self.property_type.booking_mode == PropertyType.BOOKING_MODE_WHOLE_PROPERTY
+        )
+
+    @property
+    def unit(self):
+        """The system-managed 'Entire Villa' RoomType of a whole-property listing (or None)."""
+        return self.room_types.filter(is_property_unit=True).first()
+
 
 class PropertyPhoto(models.Model):
     """Photos for properties"""
@@ -265,6 +291,11 @@ class RoomType(models.Model):
 
     # Status
     is_active = models.BooleanField(default=True)
+
+    # True only for the system-managed "Entire Villa" unit of a whole-property
+    # listing. Owners edit it through the villa-details endpoint, never as a
+    # normal room; guests book it without a room-selection step.
+    is_property_unit = models.BooleanField(default=False)
 
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)

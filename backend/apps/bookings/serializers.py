@@ -91,6 +91,14 @@ class BookingDetailSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+def validate_whole_property_rooms(room_type, num_rooms):
+    """An Entire Villa (whole-property unit) is always booked as exactly 1 unit."""
+    if room_type.is_property_unit and num_rooms != 1:
+        raise serializers.ValidationError(
+            {'number_of_rooms': 'An Entire Villa is booked as one unit - number_of_rooms must be 1.'}
+        )
+
+
 class BookingCreateSerializer(serializers.Serializer):
     """
     Serializer for creating bookings.
@@ -136,11 +144,13 @@ class BookingCreateSerializer(serializers.Serializer):
         # Validate occupancy against the combined capacity of all requested
         # rooms (limits are per room; BookingService applies the same rule).
         num_rooms = data.get('number_of_rooms', 1)
+        validate_whole_property_rooms(room_type, num_rooms)
         total_occupants = data['number_of_adults'] + data['number_of_children']
         max_adults = room_type.max_adults * num_rooms
         max_children = room_type.max_children * num_rooms
         max_occupancy = room_type.total_occupancy * num_rooms
-        rooms_label = "Room" if num_rooms == 1 else f"{num_rooms} rooms"
+        rooms_label = ("The villa" if room_type.is_property_unit
+                       else "Room" if num_rooms == 1 else f"{num_rooms} rooms")
         if data['number_of_adults'] > max_adults:
             raise serializers.ValidationError(
                 f"{rooms_label} can accommodate maximum {max_adults} adults"
@@ -177,6 +187,12 @@ class PriceCalculationSerializer(serializers.Serializer):
     number_of_adults = serializers.IntegerField(min_value=1, default=1)
     number_of_children = serializers.IntegerField(min_value=0, default=0)
     number_of_rooms = serializers.IntegerField(min_value=1, default=1)
+
+    def validate(self, data):
+        room_type = RoomType.objects.filter(id=data['room_type_id']).first()
+        if room_type is not None:
+            validate_whole_property_rooms(room_type, data.get('number_of_rooms', 1))
+        return data
 
 
 class PriceBreakdownSerializer(serializers.Serializer):

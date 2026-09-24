@@ -7,7 +7,7 @@ import time
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now
@@ -23,6 +23,36 @@ logger = logging.getLogger(__name__)
 ROOM_PHOTOS_MIN = 1
 ROOM_PHOTOS_MAX = 5
 
+# Whole-property listings (PropertyType.booking_mode == 'whole_property', e.g.
+# Entry Villa) are booked through one system-managed RoomType with this name.
+VILLA_UNIT_NAME = 'Entire Villa'
+ROOMS_NOT_APPLICABLE = (
+    'Rooms are not applicable for Entry Villa - the villa is booked as a whole. '
+    'Set the Villa Details (capacity, beds and price) instead.'
+)
+VILLA_UNIT_MANAGED = (
+    'The "Entire Villa" unit is managed automatically - edit it through the Villa Details instead.'
+)
+
+
+def villa_details_payload(unit):
+    """Villa-level details (from the system-managed unit) for the API."""
+    if unit is None:
+        return {'configured': False, 'unit_id': None}
+    pricing = getattr(unit, 'pricing', None)
+    return {
+        'configured': True,
+        'unit_id': str(unit.id),
+        'max_adults': unit.max_adults,
+        'max_children': unit.max_children,
+        'total_occupancy': unit.total_occupancy,
+        'number_of_beds': unit.number_of_beds,
+        'bed_configuration': unit.bed_configuration,
+        'bathroom_type': unit.bathroom_type,
+        'base_price': str(pricing.base_price) if pricing else None,
+        'weekend_price': str(pricing.weekend_price) if pricing and pricing.weekend_price else None,
+    }
+
 from .models import (
     PropertyType, Amenity, Destination, Property, PropertyPhoto,
     RoomType, RoomTypePhoto, Pricing, SeasonalRate
@@ -34,6 +64,7 @@ from .serializers import (
     RoomTypeListSerializer, RoomTypeDetailSerializer, RoomTypeCreateSerializer,
     PropertyPhotoSerializer, RoomTypePhotoSerializer,
     PricingSerializer, PricingUpdateSerializer, SeasonalRateSerializer,
+    VillaDetailsSerializer, bookable_room_types_of,
     PropertyCardSerializer, SearchFilterSerializer,
     DestinationDetailSerializer, SearchResultsSerializer
 )
@@ -236,6 +267,11 @@ class PropertyViewSet(viewsets.ModelViewSet):
                 f"Property must have at least {self.MIN_PROPERTY_PHOTOS} photos (currently {photo_count})."
             )
 
+        # Entry Villa (whole property): the villa itself is the unit - no
+        # owner-created rooms and no room photos; its property photos are the gallery.
+        if property_obj.is_whole_property:
+            return errors + self._villa_submission_errors(property_obj)
+
         # Only active rooms are submitted for booking; deactivated rooms are skipped.
         rooms = list(
             property_obj.room_types.filter(is_active=True)
@@ -263,6 +299,101 @@ class PropertyViewSet(viewsets.ModelViewSet):
                 )
 
         return errors
+
+    @staticmethod
+    def _villa_submission_errors(property_obj: Property) -> list:
+        """Submission rules for a whole-property listing (Entry Villa)."""
+        errors = []
+        unit = property_obj.room_types.filter(is_property_unit=True).select_related('pricing').first()
+        if unit is None:
+            errors.append('Villa details have not been set (capacity, beds and nightly price).')
+        else:
+            if unit.max_adults < 1 or unit.total_occupancy < 1:
+                errors.append('Villa capacity has not been configured.')
+            pricing = getattr(unit, 'pricing', None)
+            if pricing is None or not pricing.base_price or pricing.base_price <= 0:
+                errors.append('Villa pricing has not been configured.')
+            if not unit.is_active or unit.total_rooms != 1:
+                errors.append('Villa availability has not been configured.')
+
+        legacy_rooms = list(
+            property_obj.room_types.filter(is_active=True, is_property_unit=False).values_list('name', flat=True)
+        )
+        if legacy_rooms:
+            errors.append(
+                'An Entry Villa is booked as a whole and cannot have separate rooms '
+                f"({', '.join(legacy_rooms)}). Save the Villa Details to replace them."
+            )
+        return errors
+
+    @action(detail=True, methods=['get', 'put'], permission_classes=[permissions.IsAuthenticatedOrReadOnly], url_path='villa')
+    def villa(self, request, pk=None):
+        """
+        Villa-level details of a whole-property listing (Entry Villa).
+
+        GET /api/properties/{id}/villa/
+        PUT /api/properties/{id}/villa/
+        {
+            "max_adults": 4, "max_children": 2, "total_occupancy": 6,
+            "number_of_beds": 3, "bed_configuration": "king", "bathroom_type": "private",
+            "base_price": "25000.00", "weekend_price": "30000.00"
+        }
+
+        Stored on the system-managed "Entire Villa" RoomType
+        (is_property_unit=True, total_rooms=1) and its Pricing, so booking,
+        availability, search, notifications and payments keep using the
+        existing room-type architecture. The first save deactivates - never
+        deletes - any legacy owner-created rooms of the villa.
+        """
+        property_obj = self.get_object()
+        if not property_obj.is_whole_property:
+            return Response(
+                {'error': 'Villa details only apply to whole-property listings such as Entry Villa. '
+                          'Manage rooms for this property instead.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if request.method == 'GET':
+            unit = property_obj.unit
+            return Response({'success': True, 'data': villa_details_payload(unit)}, status=status.HTTP_200_OK)
+
+        # Same editing rules as the property itself
+        if property_obj.owner != request.user and not request.user.is_staff:
+            raise PermissionDenied('You can only edit your own properties.')
+        if not request.user.is_staff and property_obj.status not in ['draft', 'rejected']:
+            raise PermissionDenied(
+                f'You can only edit properties in DRAFT or REJECTED status. Current status: {property_obj.status}.'
+            )
+
+        serializer = VillaDetailsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        values = serializer.validated_data
+
+        with transaction.atomic():
+            unit = property_obj.room_types.select_for_update().filter(is_property_unit=True).first()
+            if unit is None:
+                unit = RoomType(property=property_obj, is_property_unit=True, name=VILLA_UNIT_NAME,
+                                room_type='villa')
+            unit.name = VILLA_UNIT_NAME
+            unit.is_active = True
+            unit.total_rooms = 1  # the villa is a single bookable unit
+            for field in ('max_adults', 'max_children', 'total_occupancy',
+                          'number_of_beds', 'bed_configuration', 'bathroom_type'):
+                setattr(unit, field, values[field])
+            unit.save()
+
+            pricing = Pricing.objects.filter(room_type=unit).first() or Pricing(room_type=unit)
+            pricing.base_price = values['base_price']
+            if 'weekend_price' in values:
+                pricing.weekend_price = values['weekend_price']
+            pricing.save()
+
+            # Legacy owner-created rooms of this villa stop being bookable.
+            # Deactivated, never deleted - bookings reference them (CASCADE).
+            property_obj.room_types.filter(is_property_unit=False, is_active=True).update(is_active=False)
+
+        unit.refresh_from_db()
+        return Response({'success': True, 'data': villa_details_payload(unit)}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_path='submit-for-approval')
     def submit_for_approval(self, request, pk=None):
@@ -580,12 +711,16 @@ class PropertyViewSet(viewsets.ModelViewSet):
         if request.method == 'POST':
             if property_obj.owner != request.user and not request.user.is_staff:
                 raise PermissionDenied("You can only add rooms to your own properties.")
+            if property_obj.is_whole_property:
+                return Response({'error': ROOMS_NOT_APPLICABLE}, status=status.HTTP_400_BAD_REQUEST)
             serializer = RoomTypeCreateSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             room = RoomType.objects.create(property=property_obj, **serializer.validated_data)
             return Response({'success': True, 'data': RoomTypeDetailSerializer(room).data}, status=status.HTTP_201_CREATED)
 
-        rooms = property_obj.room_types.all()
+        # Whole-property listings expose only their "Entire Villa" unit (used
+        # by the owner calendar); room-based properties list every room type.
+        rooms = bookable_room_types_of(property_obj)
         serializer = RoomTypeListSerializer(rooms, many=True)
         return Response(
             {
@@ -634,6 +769,8 @@ class RoomTypeViewSet(viewsets.ModelViewSet):
         # Check ownership
         if property_obj.owner != self.request.user and not self.request.user.is_staff:
             raise PermissionDenied("You can only add rooms to your own properties.")
+        if property_obj.is_whole_property:
+            raise ValidationError({'error': ROOMS_NOT_APPLICABLE})
 
         serializer.save()
 
@@ -644,6 +781,8 @@ class RoomTypeViewSet(viewsets.ModelViewSet):
         # Check ownership
         if room_type.property.owner != self.request.user and not self.request.user.is_staff:
             raise PermissionDenied("You can only edit rooms in your own properties.")
+        if room_type.is_property_unit:
+            raise ValidationError({'error': VILLA_UNIT_MANAGED})
 
         serializer.save()
 
@@ -653,6 +792,8 @@ class RoomTypeViewSet(viewsets.ModelViewSet):
         # queryset, so ownership must be checked explicitly here.
         if instance.property.owner != self.request.user and not self.request.user.is_staff:
             raise PermissionDenied("You can only delete rooms in your own properties.")
+        if instance.is_property_unit:
+            raise ValidationError({'error': VILLA_UNIT_MANAGED})
         instance.delete()
 
     @action(detail=True, methods=['get'], url_path='upload-signature', permission_classes=[permissions.IsAuthenticated])

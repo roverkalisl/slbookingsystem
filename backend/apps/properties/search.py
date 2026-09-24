@@ -8,8 +8,21 @@ from decimal import Decimal
 from django.db.models import Q, F, Sum, Avg, Count, DecimalField
 from django.db.models.functions import Coalesce
 
-from .models import Property, RoomType, Amenity
+from .models import Property, PropertyType, RoomType, Amenity
 from apps.bookings.models import Booking, Availability
+
+
+def bookable_room_types():
+    """
+    RoomTypes that represent bookable inventory: every room type of a
+    room-based property (unchanged), but ONLY the system-managed unit of a
+    whole-property listing (Entry Villa) - its legacy owner-created rooms never
+    drive price, capacity or availability.
+    """
+    return RoomType.objects.exclude(
+        Q(property__property_type__booking_mode=PropertyType.BOOKING_MODE_WHOLE_PROPERTY)
+        & Q(is_property_unit=False)
+    )
 
 
 class PropertySearchService:
@@ -44,7 +57,7 @@ class PropertySearchService:
         """
         if min_price is not None or max_price is not None:
             # Subquery to get room types with pricing in range
-            room_query = RoomType.objects.filter(property__in=self.queryset)
+            room_query = bookable_room_types().filter(property__in=self.queryset)
 
             if min_price is not None:
                 room_query = room_query.filter(pricing__base_price__gte=min_price)
@@ -92,7 +105,7 @@ class PropertySearchService:
                 status__in=['blocked', 'maintenance']
             ).values('room_type_id')
 
-            available_rooms = RoomType.objects.filter(
+            available_rooms = bookable_room_types().filter(
                 property__in=self.queryset,
                 is_active=True
             ).exclude(
@@ -120,7 +133,7 @@ class PropertySearchService:
     def filter_by_occupancy(self, num_adults: int = None, num_children: int = None):
         """Filter properties by required occupancy"""
         if num_adults is not None or num_children is not None:
-            room_query = RoomType.objects.filter(property__in=self.queryset)
+            room_query = bookable_room_types().filter(property__in=self.queryset)
 
             if num_adults is not None:
                 room_query = room_query.filter(max_adults__gte=num_adults)

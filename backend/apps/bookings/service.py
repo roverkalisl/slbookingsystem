@@ -137,6 +137,10 @@ class BookingService:
         if num_rooms < 1:
             raise ValueError("At least 1 room must be booked")
 
+        # Entry Villa (whole property): the villa itself is the single unit
+        if room_type.is_property_unit and num_rooms != 1:
+            raise ValueError("An Entire Villa is booked as one unit - number_of_rooms must be 1.")
+
         # Property and room must both be active/approved - a guest should
         # never be able to book a draft, pending, rejected, suspended or
         # unpublished property, or a room the owner has deactivated.

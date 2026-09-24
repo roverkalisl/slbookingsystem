@@ -60,6 +60,12 @@ export interface Property {
   rejection_reason?: string
   house_rules?: string
   nearby_attractions?: string
+  /**
+   * 'whole_property' (e.g. Entry Villa): the property itself is booked -
+   * room_types then contains only the system-managed "Entire Villa" unit.
+   * 'room_types': hotels, resorts, guest houses... (owner-managed rooms).
+   */
+  booking_mode?: BookingMode
   room_types?: RoomType[]
   bedrooms?: number
   max_guests?: number
@@ -71,9 +77,37 @@ export interface Property {
   }
 }
 
+export type BookingMode = 'room_types' | 'whole_property'
+
 export interface PropertyType {
   id: string
   name: string
+  booking_mode?: BookingMode
+}
+
+/** Villa-level details of a whole-property listing (GET/PUT /properties/{id}/villa/) */
+export interface VillaDetails {
+  configured: boolean
+  unit_id: string | null
+  max_adults?: number
+  max_children?: number
+  total_occupancy?: number
+  number_of_beds?: number
+  bed_configuration?: string
+  bathroom_type?: string
+  base_price?: string | null
+  weekend_price?: string | null
+}
+
+export interface VillaDetailsInput {
+  max_adults: number
+  max_children: number
+  total_occupancy: number
+  number_of_beds: number
+  bed_configuration: string
+  bathroom_type: string
+  base_price: string
+  weekend_price: string | null
 }
 
 export interface PropertyPhoto {
@@ -93,6 +127,11 @@ export interface RoomType {
   max_adults: number
   max_children: number
   total_occupancy: number
+  number_of_beds?: number
+  bed_configuration?: string
+  bathroom_type?: string
+  /** True for the system-managed "Entire Villa" unit of a whole-property listing */
+  is_property_unit?: boolean
   photos: PropertyPhoto[]
   amenities: Amenity[]
   pricing: Pricing

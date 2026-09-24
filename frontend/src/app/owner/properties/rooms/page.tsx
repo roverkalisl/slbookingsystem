@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import RoomsNotApplicable from '@/components/RoomsNotApplicable'
 
 export default function RoomsPage() {
   const [propertyId, setPropertyId] = useState<string | null>(null)
@@ -80,6 +81,7 @@ export default function RoomsPage() {
 
   if (loading) return <div className="flex items-center justify-center min-h-screen"><p className="text-gray-600">Loading...</p></div>
   if (!propertyId) return <div className="mx-auto max-w-5xl"><p className="text-red-700">Property ID required.</p></div>
+  if (property?.booking_mode === 'whole_property') return <RoomsNotApplicable propertyId={propertyId} />
 
   return (
     <div className="mx-auto max-w-5xl pb-10">

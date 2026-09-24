@@ -44,6 +44,9 @@ export function PropertyContent() {
   const [bookingError, setBookingError] = useState<string | null>(null)
 
   const selectedRoom = property?.room_types?.find(rt => rt.id === selectedRoomTypeId) || null
+  // Entry Villa (whole property): booked as one unit, shown as "Entire Villa"
+  const isVilla = property?.booking_mode === 'whole_property'
+  const villaUnit = isVilla ? property?.room_types?.find(rt => rt.is_property_unit) || null : null
 
   // Load property
   useEffect(() => {
@@ -55,9 +58,13 @@ export function PropertyContent() {
         setProperty(data)
         // Auto-select only when there's exactly one room type - otherwise
         // the guest must explicitly choose (never silently default to [0]
-        // when there's more than one option).
-        if (data.room_types?.length === 1) {
-          setSelectedRoomTypeId(data.room_types[0].id)
+        // when there's more than one option). An Entry Villa always uses its
+        // single "Entire Villa" unit - there is no room-selection step.
+        const unit = data.booking_mode === 'whole_property'
+          ? data.room_types?.find((r) => r.is_property_unit)
+          : data.room_types?.length === 1 ? data.room_types[0] : undefined
+        if (unit) {
+          setSelectedRoomTypeId(unit.id)
         }
       } catch (error) {
         console.error('Failed to load property:', error)
@@ -286,8 +293,40 @@ export function PropertyContent() {
             <div className="badge mb-4">{property.property_type.name}</div>
           </div>
 
+          {/* Entry Villa - the whole villa is the bookable unit: no room selection */}
+          {isVilla && villaUnit && (
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold mb-4">Entire Villa</h2>
+              <div className="rounded-lg border-2 border-primary bg-blue-50 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-gray-700">You book the whole villa - it&apos;s all yours.</p>
+                    <div className="flex flex-wrap gap-3 mt-2 text-sm text-gray-600">
+                      <span>{villaUnit.max_adults} adult{villaUnit.max_adults === 1 ? '' : 's'}</span>
+                      {villaUnit.max_children > 0 && <span>{villaUnit.max_children} child{villaUnit.max_children === 1 ? '' : 'ren'}</span>}
+                      <span>up to {villaUnit.total_occupancy} guest{villaUnit.total_occupancy === 1 ? '' : 's'}</span>
+                      {villaUnit.number_of_beds && (
+                        <span>{villaUnit.number_of_beds} bed{villaUnit.number_of_beds === 1 ? '' : 's'}{villaUnit.bed_configuration ? ` (${villaUnit.bed_configuration})` : ''}</span>
+                      )}
+                      {villaUnit.bathroom_type && <span>{villaUnit.bathroom_type.replace('_', ' ')} bathroom</span>}
+                    </div>
+                  </div>
+                  {villaUnit.pricing?.base_price != null && (
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-lg font-bold text-primary">LKR {Number(villaUnit.pricing.base_price).toLocaleString()}</p>
+                      <p className="text-xs text-gray-500">per night</p>
+                      {villaUnit.pricing.weekend_price && (
+                        <p className="text-xs text-gray-500">Weekends LKR {Number(villaUnit.pricing.weekend_price).toLocaleString()}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Room Types - guest must explicitly choose when there's more than one */}
-          {property.room_types && property.room_types.length > 0 && (
+          {!isVilla && property.room_types && property.room_types.length > 0 && (
             <div className="mb-8">
               <h2 className="text-2xl font-bold mb-4">Available Rooms</h2>
               <div className="space-y-4">
@@ -426,7 +465,7 @@ export function PropertyContent() {
 
             {!selectedRoomTypeId && (
               <div className="mb-4 rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
-                Select a room above to continue booking.
+                {isVilla ? 'This villa is not available for booking yet.' : 'Select a room above to continue booking.'}
               </div>
             )}
 

@@ -17,8 +17,33 @@ class PropertyTypeSerializer(serializers.ModelSerializer):
     """Serializer for property types"""
     class Meta:
         model = PropertyType
-        fields = ['id', 'name', 'description', 'is_active']
-        read_only_fields = ['id']
+        fields = ['id', 'name', 'description', 'is_active', 'booking_mode']
+        read_only_fields = ['id', 'booking_mode']
+
+
+def booking_mode_of(property_obj) -> str:
+    """'whole_property' (e.g. Entry Villa) or 'room_types' (hotels, resorts...)."""
+    return (
+        PropertyType.BOOKING_MODE_WHOLE_PROPERTY if property_obj.is_whole_property
+        else PropertyType.BOOKING_MODE_ROOM_TYPES
+    )
+
+
+def bookable_room_types_of(property_obj):
+    """
+    Room types that represent this property's bookable inventory.
+    Whole-property listings expose ONLY their system-managed unit (legacy
+    owner-created rooms are hidden); room-based properties are unchanged.
+    """
+    if property_obj.is_whole_property:
+        return property_obj.room_types.filter(is_property_unit=True)
+    return property_obj.room_types.all()
+
+
+def starting_price_of(property_obj):
+    """Lowest base price across the bookable room types (the villa's own price for Entry Villa)."""
+    min_price = bookable_room_types_of(property_obj).aggregate(min=models.Min('pricing__base_price'))['min']
+    return str(min_price) if min_price else None
 
 
 class AmenitySerializer(serializers.ModelSerializer):
@@ -137,9 +162,9 @@ class RoomTypeListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'slug', 'description', 'room_type', 'max_adults', 'max_children',
             'total_occupancy', 'bed_configuration', 'bathroom_type', 'number_of_beds', 'total_rooms',
-            'room_size_sqft', 'view_type', 'is_active', 'amenities', 'photos', 'pricing', 'created_at'
+            'room_size_sqft', 'view_type', 'is_active', 'is_property_unit', 'amenities', 'photos', 'pricing', 'created_at'
         ]
-        read_only_fields = ['id', 'slug', 'created_at']
+        read_only_fields = ['id', 'slug', 'is_property_unit', 'created_at']
 
     def get_amenities(self, obj):
         amenities = obj.roomtypeamenity_set.all()
@@ -166,9 +191,9 @@ class RoomTypeDetailSerializer(serializers.ModelSerializer):
             'id', 'property', 'name', 'slug', 'description', 'room_type',
             'max_adults', 'max_children', 'total_occupancy',
             'bed_configuration', 'bathroom_type', 'number_of_beds', 'total_rooms', 'room_size_sqft',
-            'view_type', 'is_active', 'amenities', 'photos', 'created_at', 'updated_at'
+            'view_type', 'is_active', 'is_property_unit', 'amenities', 'photos', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'slug', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'slug', 'is_property_unit', 'created_at', 'updated_at']
 
     def get_amenities(self, obj):
         amenities = obj.roomtypeamenity_set.all()
@@ -178,6 +203,7 @@ class RoomTypeDetailSerializer(serializers.ModelSerializer):
 class PropertyListSerializer(serializers.ModelSerializer):
     """Serializer for property list view"""
     property_type_name = serializers.CharField(source='property_type.name', read_only=True)
+    booking_mode = serializers.SerializerMethodField()
     amenities = serializers.SerializerMethodField()
     photo_count = serializers.SerializerMethodField()
     owner_info = serializers.SerializerMethodField()
@@ -187,10 +213,13 @@ class PropertyListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'slug', 'short_description', 'city', 'district',
             'status', 'submitted_at', 'rejection_reason', 'house_rules',
-            'cover_photo_url', 'property_type_name', 'average_rating',
+            'cover_photo_url', 'property_type_name', 'booking_mode', 'average_rating',
             'total_reviews', 'amenities', 'photo_count', 'owner_info', 'created_at', 'published_at'
         ]
         read_only_fields = ['id', 'slug', 'created_at', 'published_at', 'submitted_at']
+
+    def get_booking_mode(self, obj):
+        return booking_mode_of(obj)
 
     def get_amenities(self, obj):
         amenities = obj.propertyamenity_set.all()[:5]  # Show first 5
@@ -211,9 +240,13 @@ class PropertyListSerializer(serializers.ModelSerializer):
 class PropertyDetailSerializer(serializers.ModelSerializer):
     """Detailed serializer for property view"""
     property_type_name = serializers.CharField(source='property_type.name', read_only=True)
+    booking_mode = serializers.SerializerMethodField()
     amenities = serializers.SerializerMethodField()
     photos = PropertyPhotoSerializer(many=True, read_only=True)
-    room_types = RoomTypeListSerializer(many=True, read_only=True)
+    # Whole-property listings (Entry Villa) expose only their "Entire Villa"
+    # unit here, so every consumer (guest page, admin review, search cards)
+    # sees the villa itself rather than legacy owner-created rooms.
+    room_types = serializers.SerializerMethodField()
     owner_email = serializers.CharField(source='owner.email', read_only=True)
     owner_name = serializers.SerializerMethodField()
     contact = PropertyContactSerializer(read_only=True)
@@ -223,7 +256,7 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Property
         fields = [
-            'id', 'owner', 'owner_email', 'owner_name', 'property_type_name',
+            'id', 'owner', 'owner_email', 'owner_name', 'property_type_name', 'booking_mode',
             'name', 'slug', 'description', 'short_description',
             'address', 'city', 'district', 'province', 'postal_code',
             'latitude', 'longitude', 'google_maps_url', 'nearby_attractions',
@@ -244,10 +277,16 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
         PropertyCardSerializer.get_min_price (search results) - the lowest
         base_price across this property's room types. Property itself has no
         price_range_min/max fields; those don't exist on the model and
-        shouldn't be invented just to satisfy the frontend.
+        shouldn't be invented just to satisfy the frontend. For Entry Villa it
+        is the villa's own nightly price.
         """
-        min_price = obj.room_types.aggregate(min=models.Min('pricing__base_price'))['min']
-        return str(min_price) if min_price else None
+        return starting_price_of(obj)
+
+    def get_booking_mode(self, obj):
+        return booking_mode_of(obj)
+
+    def get_room_types(self, obj):
+        return RoomTypeListSerializer(bookable_room_types_of(obj), many=True, context=self.context).data
 
     def get_amenities(self, obj):
         amenities = obj.propertyamenity_set.all()
@@ -461,15 +500,37 @@ class PropertyCardSerializer(serializers.ModelSerializer):
         return [{'id': pa.amenity.id, 'name': pa.amenity.name} for pa in amenities]
 
     def get_min_price(self, obj):
-        """Get minimum room price"""
-        min_price = obj.room_types.aggregate(
-            min=models.Min('pricing__base_price')
-        )['min']
-        return str(min_price) if min_price else None
+        """Get minimum room price (the villa's own price for Entry Villa)"""
+        return starting_price_of(obj)
 
     def get_room_count(self, obj):
-        """Get number of room types"""
-        return obj.room_types.count()
+        """Get number of room types (1 - the villa itself - for Entry Villa)"""
+        return bookable_room_types_of(obj).count()
+
+
+class VillaDetailsSerializer(serializers.Serializer):
+    """
+    Owner input for an Entry Villa's villa-level details
+    (PUT /api/properties/{id}/villa/). Stored on the system-managed
+    "Entire Villa" RoomType + its Pricing, so booking, availability and search
+    keep using the existing room-type architecture.
+    """
+    max_adults = serializers.IntegerField(min_value=1)
+    max_children = serializers.IntegerField(min_value=0, default=0)
+    total_occupancy = serializers.IntegerField(min_value=1, required=False)
+    number_of_beds = serializers.IntegerField(min_value=1)
+    bed_configuration = serializers.ChoiceField(choices=RoomType.BED_CONFIGURATION_CHOICES)
+    bathroom_type = serializers.ChoiceField(choices=RoomType.BATHROOM_TYPE_CHOICES)
+    base_price = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal('0.01'))
+    weekend_price = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal('0.01'), required=False, allow_null=True
+    )
+
+    def validate(self, attrs):
+        # Same default as rooms: occupancy = adults + children unless given
+        if attrs.get('total_occupancy') is None:
+            attrs['total_occupancy'] = attrs['max_adults'] + attrs.get('max_children', 0)
+        return attrs
 
 
 class SearchFilterSerializer(serializers.Serializer):

@@ -16,6 +16,8 @@ import type {
   Review,
   PaymentMethod,
   PaymentInitiation,
+  VillaDetails,
+  VillaDetailsInput,
 } from '@/types'
 
 const API_BASE_URL =
@@ -397,6 +399,20 @@ class ApiClient {
    */
   async setRoomPricing(roomId: string, data: { base_price: string; weekend_price: string | null }): Promise<any> {
     const response = await this.client.post<any>(`/properties/rooms/${roomId}/pricing/`, data)
+    return response.data.data || response.data
+  }
+
+  /**
+   * Entry Villa (whole-property) details: GET/PUT /properties/{id}/villa/.
+   * Stored by the backend on the system-managed "Entire Villa" unit.
+   */
+  async getVillaDetails(propertyId: string): Promise<VillaDetails> {
+    const response = await this.client.get<any>(`/properties/${propertyId}/villa/`)
+    return response.data.data || response.data
+  }
+
+  async saveVillaDetails(propertyId: string, data: VillaDetailsInput): Promise<VillaDetails> {
+    const response = await this.client.put<any>(`/properties/${propertyId}/villa/`, data)
     return response.data.data || response.data
   }
 

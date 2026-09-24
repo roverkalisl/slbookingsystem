@@ -63,6 +63,9 @@ export default function AdminPropertyDetailClient({ propertyId: paramId }: { pro
   }
 
   const rooms: any[] = (property as any)?.room_types || []
+  // Entry Villa (whole property): show the villa itself, not an owner-managed room
+  const isVilla = (property as any)?.booking_mode === 'whole_property'
+  const villaUnit: any = isVilla ? rooms.find((room) => room.is_property_unit) || null : null
 
   if (loading) return <div className="py-12 text-center text-gray-600">Loading property details...</div>
   if (!property) return <div className="py-12 text-center text-red-700">{error || 'Property not found'}</div>
@@ -95,6 +98,26 @@ export default function AdminPropertyDetailClient({ propertyId: paramId }: { pro
           <p className="text-sm text-gray-600">No property photos.</p>
         )}
       </div>
+      {isVilla ? (
+      <div className="bg-white rounded-lg shadow p-6 mb-6">
+        <h2 className="text-xl font-bold mb-3">Entire Villa</h2>
+        {villaUnit ? (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div><p className="text-gray-600">Capacity</p><p className="font-semibold mt-1">{villaUnit.max_adults} adults, {villaUnit.max_children || 0} children (max {villaUnit.total_occupancy} guests)</p></div>
+            <div><p className="text-gray-600">Beds &amp; bathroom</p><p className="font-semibold mt-1">{villaUnit.number_of_beds} {villaUnit.bed_configuration} bed(s) • {String(villaUnit.bathroom_type || '').replace('_', ' ')} bathroom</p></div>
+            <div><p className="text-gray-600">Price</p><p className="font-semibold mt-1">
+              {villaUnit.pricing
+                ? `LKR ${Number(villaUnit.pricing.base_price).toLocaleString()} / night${villaUnit.pricing.weekend_price ? ` (weekend LKR ${Number(villaUnit.pricing.weekend_price).toLocaleString()})` : ''}`
+                : 'no price set'}
+            </p></div>
+            <div><p className="text-gray-600">Availability</p><p className="font-semibold mt-1">{villaUnit.is_active && villaUnit.total_rooms === 1 ? 'Bookable as 1 unit (owner-blocked dates excluded)' : 'Not configured'}</p></div>
+          </div>
+        ) : (
+          <p className="text-sm text-red-600">Villa details have not been set.</p>
+        )}
+        <p className="mt-3 text-xs text-gray-500">Entry Villa is booked as a whole - the property photos above are the villa&apos;s gallery.</p>
+      </div>
+      ) : (
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <h2 className="text-xl font-bold mb-3">Rooms ({rooms.length})</h2>
         {rooms.length > 0 ? (
@@ -125,6 +148,7 @@ export default function AdminPropertyDetailClient({ propertyId: paramId }: { pro
           <p className="text-sm text-gray-600">No rooms.</p>
         )}
       </div>
+      )}
       <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-xl font-bold mb-3">Description</h2>
         <p className="text-gray-700 whitespace-pre-line">{property.description}</p>

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
+import RoomsNotApplicable from '@/components/RoomsNotApplicable'
 
 const ROOM_TYPES = ['bedroom', 'living_room', 'studio', 'suite', 'dormitory', 'bungalow', 'villa']
 const BED_CONFIGS = ['single', 'double', 'queen', 'king', 'twin', 'bunk', 'futon', 'mixed']
@@ -32,9 +33,17 @@ export default function AddRoomPage() {
   const [basePrice, setBasePrice] = useState('')
   const [weekendPrice, setWeekendPrice] = useState('')
 
+  // Entry Villa (whole property) has no rooms - the backend also refuses them
+  const [isVilla, setIsVilla] = useState(false)
+
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get('propertyId')
     setPropertyId(id)
+    if (id) {
+      api.getProperty(id)
+        .then((property) => setIsVilla(property.booking_mode === 'whole_property'))
+        .catch(() => { /* the save call reports any real problem */ })
+    }
   }, [])
 
   const update = (field: string, value: string | number) => {
@@ -68,6 +77,7 @@ export default function AddRoomPage() {
   }
 
   if (!propertyId) return <div className="mx-auto max-w-3xl mt-8"><p className="text-red-700">Property ID required.</p></div>
+  if (isVilla) return <RoomsNotApplicable propertyId={propertyId} />
 
   return (
     <div className="mx-auto max-w-3xl pb-10">
