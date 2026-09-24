@@ -4,7 +4,7 @@ Property models for SL Booking.
 
 import uuid
 from decimal import Decimal
-from django.db import models
+from django.db import models, transaction
 from django.utils.text import slugify
 from apps.core.models import User
 
@@ -179,6 +179,53 @@ class Property(models.Model):
         """The system-managed 'Entire Villa' RoomType of a whole-property listing (or None)."""
         return self.room_types.filter(is_property_unit=True).first()
 
+    # --- Cover photo -----------------------------------------------------
+    # The cover is the PropertyPhoto flagged is_cover (at most one per property,
+    # enforced by a DB constraint). cover_photo_url mirrors its Cloudinary URL
+    # so older readers of that field stay correct; it is never edited directly.
+
+    def _lock(self):
+        """Serialise cover changes for this property (row lock inside a transaction)."""
+        Property.objects.select_for_update().filter(pk=self.pk).first()
+
+    def _sync_cover_url(self, url):
+        if self.cover_photo_url != url:
+            Property.objects.filter(pk=self.pk).update(cover_photo_url=url)
+            self.cover_photo_url = url
+
+    @transaction.atomic
+    def set_cover_photo(self, photo: 'PropertyPhoto') -> 'PropertyPhoto':
+        """Make `photo` the only cover of this property (the previous cover becomes a normal photo)."""
+        if photo.property_id != self.pk:
+            raise ValueError('The cover photo must belong to this property.')
+        self._lock()
+        # Unset first so the one-cover constraint never sees two covers.
+        self.photos.filter(is_cover=True).exclude(pk=photo.pk).update(is_cover=False)
+        if not photo.is_cover:
+            photo.is_cover = True
+            photo.save(update_fields=['is_cover'])
+        self._sync_cover_url(photo.cloudinary_url)
+        return photo
+
+    @transaction.atomic
+    def ensure_cover_photo(self):
+        """
+        Keep exactly one cover while photos exist: if there is none (new
+        property, or the cover was just deleted) the first remaining photo by
+        display order becomes the cover. With no photos the cover is cleared.
+        Returns the cover photo or None.
+        """
+        self._lock()
+        cover = self.photos.filter(is_cover=True).first()
+        if cover is None:
+            first = self.photos.order_by('display_order', 'created_at').first()
+            if first is None:
+                self._sync_cover_url(None)
+                return None
+            return self.set_cover_photo(first)
+        self._sync_cover_url(cover.cloudinary_url)
+        return cover
+
 
 class PropertyPhoto(models.Model):
     """Photos for properties"""
@@ -196,6 +243,12 @@ class PropertyPhoto(models.Model):
         indexes = [
             models.Index(fields=['property_id']),
             models.Index(fields=['display_order']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['property'], condition=models.Q(is_cover=True),
+                name='unique_cover_photo_per_property',
+            ),
         ]
         ordering = ['display_order']
 

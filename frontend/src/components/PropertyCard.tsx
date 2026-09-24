@@ -14,23 +14,27 @@ interface PropertyCardProps {
 }
 
 export function PropertyCard({ property }: PropertyCardProps) {
-  const imageUrl =
-    property.photos.length > 0
-      ? property.photos[0].url
-      : 'https://via.placeholder.com/300x200?text=No+Image'
+  // The owner's chosen cover photo; the first real photo only if no cover URL
+  // came back. No external placeholder - a missing photo shows a neutral box.
+  const imageUrl = property.cover_photo_url || property.photos.find(photo => photo.url)?.url || null
+  const startingPrice = Number(property.price_range_min)
 
   return (
     <Link href={`/property/${property.id}`}>
       <div className="bg-white rounded-lg shadow hover:shadow-lg transition cursor-pointer overflow-hidden">
         {/* Image */}
         <div className="relative h-48 w-full bg-gray-200">
-          <Image
-            src={imageUrl}
-            alt={property.name}
-            fill
-            className="object-cover"
-            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-          />
+          {imageUrl ? (
+            <Image
+              src={imageUrl}
+              alt={property.name}
+              fill
+              className="object-cover"
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-sm text-gray-500">No photo yet</div>
+          )}
         </div>
 
         {/* Content */}
@@ -57,11 +61,18 @@ export function PropertyCard({ property }: PropertyCardProps) {
 
           {/* Price */}
           <div className="mt-4 pt-4 border-t border-gray-200">
-            <p className="text-sm text-gray-600">Starting from</p>
-            <p className="text-2xl font-bold text-primary">
-              LKR {property.price_range_min.toLocaleString()}
-            </p>
-            <p className="text-xs text-gray-500">per night</p>
+            {startingPrice > 0 ? (
+              <>
+                <p className="text-sm text-gray-600">Starting from</p>
+                <p className="text-2xl font-bold text-primary">
+                  LKR {startingPrice.toLocaleString()}
+                </p>
+                <p className="text-xs text-gray-500">per night</p>
+              </>
+            ) : (
+              // No priced bookable unit yet (the API returns no min_price) - never show "LKR 0"
+              <p className="text-sm font-medium text-gray-500">Price not set</p>
+            )}
           </div>
         </div>
       </div>

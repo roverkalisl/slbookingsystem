@@ -16,6 +16,7 @@ import type {
   Review,
   PaymentMethod,
   PaymentInitiation,
+  PropertyPhotoState,
   VillaDetails,
   VillaDetailsInput,
 } from '@/types'
@@ -323,8 +324,16 @@ class ApiClient {
     return response.data.data || response.data
   }
 
-  async deletePropertyPhoto(propertyId: string, photoId: string): Promise<void> {
-    await this.client.delete(`/properties/${propertyId}/delete-photo/?photo_id=${photoId}`)
+  /** Returns the updated cover + photo list (deleting the cover promotes the next photo). */
+  async deletePropertyPhoto(propertyId: string, photoId: string): Promise<PropertyPhotoState | undefined> {
+    const response = await this.client.delete<any>(`/properties/${propertyId}/delete-photo/?photo_id=${photoId}`)
+    return response.data?.data
+  }
+
+  /** Make an already-uploaded photo the property's only cover (no re-upload). */
+  async setPropertyCoverPhoto(propertyId: string, photoId: string): Promise<PropertyPhotoState> {
+    const response = await this.client.post<any>(`/properties/${propertyId}/set-cover/`, { photo_id: photoId })
+    return response.data.data
   }
 
   async deleteRoomPhoto(roomId: string, photoId: string): Promise<void> {

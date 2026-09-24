@@ -89,9 +89,13 @@ export default function AdminPropertyDetailClient({ propertyId: paramId }: { pro
         <h2 className="text-xl font-bold mb-3">Photos ({property.photos.length})</h2>
         {property.photos.length > 0 ? (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {property.photos.map((photo: any) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={photo.id} src={photo.url} alt={property.name} className="h-32 w-full rounded object-cover" />
+            {/* Cover photo first and clearly marked */}
+            {[...property.photos].sort((a: any, b: any) => Number(!!b.is_cover) - Number(!!a.is_cover)).map((photo: any) => (
+              <div key={photo.id} className={`relative rounded ${photo.is_cover ? 'ring-2 ring-blue-600' : ''}`}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={photo.url} alt={property.name} className="h-32 w-full rounded object-cover" />
+                {photo.is_cover && <span className="absolute top-2 left-2 rounded bg-blue-600 px-2 py-1 text-xs font-semibold text-white">Cover photo</span>}
+              </div>
             ))}
           </div>
         ) : (

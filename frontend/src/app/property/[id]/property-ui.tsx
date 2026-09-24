@@ -196,8 +196,12 @@ export function PropertyContent() {
     )
   }
 
-  const photos = property.photos.length > 0 ? property.photos : []
-  const currentPhoto = photos[photoIndex] || { url: 'https://via.placeholder.com/800x600' }
+  // Cover photo first so it is the hero image; the rest follow in display order.
+  const photos = [...property.photos].sort((a, b) => Number(!!b.is_cover) - Number(!!a.is_cover))
+  // No external placeholder service (it no longer serves images): a property
+  // without photos shows a neutral box instead of a broken image.
+  const currentPhoto = photos[photoIndex] || null
+  const sidebarPrice = Number(selectedRoom?.pricing?.base_price ?? property.price_range_min ?? 0)
 
   return (
     <div className="container py-8">
@@ -213,13 +217,17 @@ export function PropertyContent() {
           {/* Photo Gallery */}
           <div className="mb-8">
             <div className="relative h-96 w-full bg-gray-200 rounded-lg overflow-hidden mb-4">
-              <Image
-                src={currentPhoto.url}
-                alt={property.name}
-                fill
-                className="object-cover"
-                sizes="(max-width: 768px) 100vw, 66vw"
-              />
+              {currentPhoto ? (
+                <Image
+                  src={currentPhoto.url}
+                  alt={property.name}
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 768px) 100vw, 66vw"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-gray-500">No photos yet</div>
+              )}
 
               {photos.length > 1 && (
                 <>
@@ -457,10 +465,14 @@ export function PropertyContent() {
             {/* Price */}
             <div className="mb-6">
               <p className="text-gray-600 text-sm">{selectedRoom ? selectedRoom.name : 'Starting from'}</p>
-              <p className="text-3xl font-bold text-primary">
-                LKR {Number(selectedRoom?.pricing?.base_price ?? property.price_range_min ?? 0).toLocaleString()}
-              </p>
-              <p className="text-gray-600 text-sm">per night</p>
+              {sidebarPrice > 0 ? (
+                <>
+                  <p className="text-3xl font-bold text-primary">LKR {sidebarPrice.toLocaleString()}</p>
+                  <p className="text-gray-600 text-sm">per night</p>
+                </>
+              ) : (
+                <p className="text-lg font-semibold text-gray-500">Price not set</p>
+              )}
             </div>
 
             {!selectedRoomTypeId && (

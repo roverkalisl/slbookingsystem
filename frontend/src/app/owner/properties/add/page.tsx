@@ -35,6 +35,27 @@ interface Amenity {
   category: string | null
 }
 
+// Display order of the master amenity categories (seed_master_data). Any other
+// category from the API (e.g. older records) is shown after these, never hidden.
+const CATEGORY_ORDER = [
+  'Property Basics', 'Kitchen & Dining', 'Bathroom', 'Outdoor', 'Family', 'Services',
+  'Security', 'Wellness', 'Activities', 'Accessibility', 'Pet Policy',
+]
+
+function groupAmenitiesByCategory(amenities: Amenity[]): [string, Amenity[]][] {
+  const groups = new Map<string, Amenity[]>()
+  for (const amenity of amenities) {
+    const raw = amenity.category?.trim() || 'Other'
+    const label = raw.charAt(0).toUpperCase() + raw.slice(1)
+    groups.set(label, [...(groups.get(label) || []), amenity])
+  }
+  const rank = (label: string) => {
+    const index = CATEGORY_ORDER.indexOf(label)
+    return index === -1 ? CATEGORY_ORDER.length : index
+  }
+  return Array.from(groups.entries()).sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
+}
+
 function errorMessage(error: any) {
   const status = error.response?.status
   const data = error.response?.data
@@ -112,7 +133,25 @@ export default function AddPropertyPage() {
         <section className="rounded-lg bg-white p-6 shadow"><h2 className="mb-5 text-xl font-semibold">Location</h2><div className="grid gap-4 md:grid-cols-2">
           <label className="md:col-span-2">Address *<input {...register('address', { required: 'Address is required' })} className="form-input" /></label><label>City *<input {...register('city', { required: 'City is required' })} className="form-input" /></label><label>District *<input {...register('district', { required: 'District is required' })} className="form-input" /></label><label>Province *<input {...register('province', { required: 'Province is required' })} className="form-input" /></label><label>Country<input defaultValue="Sri Lanka" className="form-input" readOnly /></label><label>Latitude<input {...register('latitude')} className="form-input" /></label><label>Longitude<input {...register('longitude')} className="form-input" /></label><label className="md:col-span-2">Google Maps URL<input type="url" {...register('google_maps_url')} className="form-input" /></label>
         </div></section>
-        <section className="rounded-lg bg-white p-6 shadow"><h2 className="mb-5 text-xl font-semibold">Property amenities</h2>{loadingOptions ? <p className="text-sm text-gray-500">Loading amenities...</p> : <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">{amenities.map(amenity => <label key={amenity.id} className="flex items-center gap-2"><input type="checkbox" checked={selectedAmenities.includes(amenity.id)} onChange={() => setSelectedAmenities(current => current.includes(amenity.id) ? current.filter(id => id !== amenity.id) : [...current, amenity.id])} />{amenity.name}</label>)}</div>}<p className="mt-3 text-sm text-gray-500">Amenities are optional. Selections are loaded from the platform's amenity list.</p></section>
+        <section className="rounded-lg bg-white p-6 shadow"><h2 className="mb-5 text-xl font-semibold">Property amenities</h2>
+          {loadingOptions ? (
+            <p className="text-sm text-gray-500">Loading amenities...</p>
+          ) : amenities.length === 0 ? (
+            <p className="rounded-lg bg-gray-50 p-4 text-sm text-gray-600">No amenities are available yet. You can save the property now and add amenities later.</p>
+          ) : (
+            <div className="space-y-5">
+              {groupAmenitiesByCategory(amenities).map(([category, items]) => (
+                <div key={category}>
+                  <h3 className="mb-2 text-sm font-semibold text-gray-800">{category}</h3>
+                  <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+                    {/* Always the database id returned by GET /api/properties/amenities/ - never an index or a hardcoded id */}
+                    {items.map(amenity => <label key={amenity.id} className="flex items-center gap-2"><input type="checkbox" checked={selectedAmenities.includes(amenity.id)} onChange={() => setSelectedAmenities(current => current.includes(amenity.id) ? current.filter(id => id !== amenity.id) : [...current, amenity.id])} />{amenity.name}</label>)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="mt-3 text-sm text-gray-500">Amenities are optional. Selections are loaded from the platform's amenity list.</p></section>
         <section className="rounded-lg bg-white p-6 shadow"><h2 className="mb-5 text-xl font-semibold">House rules</h2><label>Rules, check-in/out, smoking, pets, events, children, and additional information<textarea {...register('house_rules')} rows={6} className="form-input" /></label></section>
         <div className="flex flex-wrap items-center justify-between gap-4 pb-10"><span className="text-sm text-gray-500">{propertyId ? `Draft ID: ${propertyId}` : 'No property has been created yet.'}</span><button type="submit" disabled={saving} className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50">{saving ? 'Saving...' : 'Save draft'}</button></div>
       </form>

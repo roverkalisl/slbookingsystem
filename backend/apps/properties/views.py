@@ -8,6 +8,7 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now
@@ -64,7 +65,7 @@ from .serializers import (
     RoomTypeListSerializer, RoomTypeDetailSerializer, RoomTypeCreateSerializer,
     PropertyPhotoSerializer, RoomTypePhotoSerializer,
     PricingSerializer, PricingUpdateSerializer, SeasonalRateSerializer,
-    VillaDetailsSerializer, bookable_room_types_of,
+    VillaDetailsSerializer, bookable_room_types_of, cover_url_of,
     PropertyCardSerializer, SearchFilterSerializer,
     DestinationDetailSerializer, SearchResultsSerializer
 )
@@ -669,19 +670,39 @@ class PropertyViewSet(viewsets.ModelViewSet):
         if not cloudinary_url or not cloudinary_public_id:
             return Response({'error': 'cloudinary_url and cloudinary_public_id are required'}, status=status.HTTP_400_BAD_REQUEST)
 
-        photo = PropertyPhoto.objects.create(
-            property=property_obj,
-            cloudinary_url=cloudinary_url,
-            cloudinary_public_id=cloudinary_public_id,
-            display_order=property_obj.photos.count(),
-            is_cover=not property_obj.photos.exists(),
-        )
+        with transaction.atomic():
+            photo = PropertyPhoto.objects.create(
+                property=property_obj,
+                cloudinary_url=cloudinary_url,
+                cloudinary_public_id=cloudinary_public_id,
+                display_order=property_obj.photos.count(),
+            )
+            # The first photo of a property becomes its cover automatically.
+            property_obj.ensure_cover_photo()
+            photo.refresh_from_db()
         return Response({'success': True, 'data': PropertyPhotoSerializer(photo).data}, status=status.HTTP_201_CREATED)
+
+    @staticmethod
+    def _photo_state(property_obj):
+        """Cover URL + ordered photo list, returned after every cover change."""
+        return {
+            'cover_photo_url': cover_url_of(property_obj),
+            'photos': PropertyPhotoSerializer(property_obj.photos.order_by('display_order', 'created_at'), many=True).data,
+        }
+
+    @staticmethod
+    def _find_property_photo(property_obj, photo_id):
+        """The photo with this id ON THIS property, or None (also for malformed ids)."""
+        try:
+            return PropertyPhoto.objects.filter(id=photo_id, property=property_obj).first()
+        except (ValueError, DjangoValidationError):
+            return None
 
     @action(detail=True, methods=['delete'], url_path='delete-photo')
     def delete_photo(self, request, photo_id=None, pk=None):
         """
-        Delete a property photo.
+        Delete a property photo. Deleting the cover promotes the first
+        remaining photo; deleting the last photo clears the cover.
 
         DELETE /api/properties/{property_id}/delete-photo/?photo_id=<photo_id>
         """
@@ -693,12 +714,43 @@ class PropertyViewSet(viewsets.ModelViewSet):
         if not photo_id:
             return Response({'error': 'photo_id is required'}, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            photo = PropertyPhoto.objects.get(id=photo_id, property=property_obj)
-            photo.delete()
-            return Response({'success': True, 'message': 'Photo deleted successfully'}, status=status.HTTP_200_OK)
-        except PropertyPhoto.DoesNotExist:
+        photo = self._find_property_photo(property_obj, photo_id)
+        if photo is None:
             return Response({'error': 'Photo not found'}, status=status.HTTP_404_NOT_FOUND)
+        with transaction.atomic():
+            photo.delete()
+            property_obj.ensure_cover_photo()
+        return Response(
+            {'success': True, 'message': 'Photo deleted successfully', 'data': self._photo_state(property_obj)},
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_path='set-cover')
+    def set_cover(self, request, pk=None):
+        """
+        Make one of the property's existing photos its cover (no re-upload).
+        The previous cover becomes a normal photo.
+
+        POST /api/properties/{property_id}/set-cover/   {"photo_id": "<photo uuid>"}
+        """
+        property_obj = self.get_object()
+        if property_obj.owner != request.user and not request.user.is_staff:
+            raise PermissionDenied("You can only change the cover photo of your own properties.")
+
+        photo_id = request.data.get('photo_id')
+        if not photo_id:
+            return Response({'error': 'photo_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Scoped to this property: another property's photo is simply "not found".
+        photo = self._find_property_photo(property_obj, photo_id)
+        if photo is None:
+            return Response({'error': 'Photo not found for this property'}, status=status.HTTP_404_NOT_FOUND)
+
+        property_obj.set_cover_photo(photo)
+        return Response(
+            {'success': True, 'message': 'Cover photo updated', 'data': self._photo_state(property_obj)},
+            status=status.HTTP_200_OK
+        )
 
     @action(detail=True, methods=['get', 'post'])
     def rooms(self, request, pk=None):

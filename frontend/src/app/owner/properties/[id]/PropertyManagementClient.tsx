@@ -23,6 +23,7 @@ export default function PropertyManagementClient({ propertyId }: { propertyId: s
   const [photos, setPhotos] = useState<Photo[]>([])
   const [photoError, setPhotoError] = useState<string | null>(null)
   const [photoSuccess, setPhotoSuccess] = useState<string | null>(null)
+  const [settingCoverId, setSettingCoverId] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -53,14 +54,33 @@ export default function PropertyManagementClient({ propertyId }: { propertyId: s
   }
 
   const handleDeletePhoto = async (photoId: string) => {
-    if (!confirm('Delete this photo?')) return
+    const deletingCover = photos.find(p => p.id === photoId)?.is_cover
+    if (!confirm(deletingCover ? 'Delete the cover photo? The next photo will become the cover.' : 'Delete this photo?')) return
     try {
       setPhotoError(null)
-      await api.deletePropertyPhoto(propertyId, photoId)
-      setPhotos(photos.filter(p => p.id !== photoId))
+      setPhotoSuccess(null)
+      const state = await api.deletePropertyPhoto(propertyId, photoId)
+      // The server promotes the next photo when the cover is deleted - use its list
+      setPhotos(state?.photos ?? photos.filter(p => p.id !== photoId))
       setPhotoSuccess('Photo deleted successfully')
     } catch (err: any) {
       setPhotoError('Failed to delete photo')
+    }
+  }
+
+  const handleSetCover = async (photoId: string) => {
+    if (settingCoverId) return
+    setSettingCoverId(photoId)
+    setPhotoError(null)
+    setPhotoSuccess(null)
+    try {
+      const state = await api.setPropertyCoverPhoto(propertyId, photoId)
+      setPhotos(state.photos)
+      setPhotoSuccess('Cover photo updated.')
+    } catch (err: any) {
+      setPhotoError(err.response?.data?.error || err.response?.data?.detail || 'Failed to set the cover photo.')
+    } finally {
+      setSettingCoverId(null)
     }
   }
 
@@ -198,7 +218,9 @@ export default function PropertyManagementClient({ propertyId }: { propertyId: s
           {activeTab === 'photos' && (
             <section className="rounded-lg bg-white p-6 shadow">
               <h2 className="text-xl font-semibold">Property Photos</h2>
-              <p className="mt-2 text-sm text-gray-600">{photos.length} photo{photos.length === 1 ? '' : 's'} uploaded</p>
+              <p className="mt-2 text-sm text-gray-600">
+                {photos.length} photo{photos.length === 1 ? '' : 's'} uploaded. The cover photo is shown on property cards, search results and as the main image of your listing.
+              </p>
 
               {photoError && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-red-800">{photoError}</div>}
               {photoSuccess && <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3 text-green-800">{photoSuccess}</div>}
@@ -227,14 +249,29 @@ export default function PropertyManagementClient({ propertyId }: { propertyId: s
               <div className="mt-6 grid gap-4 sm:grid-cols-2 md:grid-cols-3">
                 {photos.map(photo => (
                   <div key={photo.id} className="relative">
-                    <img src={photo.cloudinary_url} alt="property" className="h-40 w-full rounded-lg object-cover" />
-                    {photo.is_cover && <span className="absolute top-2 left-2 rounded bg-blue-600 px-2 py-1 text-xs text-white">Cover</span>}
-                    <button
-                      onClick={() => handleDeletePhoto(photo.id)}
-                      className="mt-2 w-full rounded bg-red-50 px-3 py-2 text-sm text-red-600 hover:bg-red-100"
-                    >
-                      Delete
-                    </button>
+                    <img
+                      src={photo.cloudinary_url}
+                      alt="property"
+                      className={`h-40 w-full rounded-lg object-cover ${photo.is_cover ? 'ring-4 ring-blue-600' : ''}`}
+                    />
+                    {photo.is_cover && <span className="absolute top-2 left-2 rounded bg-blue-600 px-2 py-1 text-xs font-semibold text-white">Cover Photo</span>}
+                    <div className="mt-2 flex gap-2">
+                      {!photo.is_cover && (
+                        <button
+                          onClick={() => handleSetCover(photo.id)}
+                          disabled={settingCoverId !== null}
+                          className="flex-1 rounded bg-blue-50 px-3 py-2 text-sm text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                        >
+                          {settingCoverId === photo.id ? 'Setting...' : 'Set as Cover'}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDeletePhoto(photo.id)}
+                        className="flex-1 rounded bg-red-50 px-3 py-2 text-sm text-red-600 hover:bg-red-100"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

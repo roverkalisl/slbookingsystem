@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.utils.html import format_html
 from django.utils.timezone import now
 from .models import (
     PropertyType, Amenity, Destination, Property, PropertyPhoto, PropertyAmenity,
@@ -26,13 +27,45 @@ class DestinationAdmin(admin.ModelAdmin):
     prepopulated_fields = {'slug': ('name',)}
 
 
+def photo_preview(photo, height=80):
+    """Thumbnail of a stored Cloudinary URL for the admin."""
+    if not photo or not photo.cloudinary_url:
+        return '-'
+    return format_html('<img src="{}" style="height:{}px;border-radius:4px" />', photo.cloudinary_url, height)
+
+
+class PropertyPhotoInline(admin.TabularInline):
+    """Property photos with the cover clearly marked. The cover is changed with
+    the "Set as cover" action on Property photos (keeps exactly one cover)."""
+    model = PropertyPhoto
+    extra = 0
+    fields = ['preview', 'is_cover', 'display_order', 'caption', 'cloudinary_url']
+    readonly_fields = ['preview', 'is_cover', 'cloudinary_url']
+    ordering = ['-is_cover', 'display_order', 'created_at']
+
+    @admin.display(description='Photo')
+    def preview(self, obj):
+        return photo_preview(obj)
+
+
 @admin.register(Property)
 class PropertyAdmin(admin.ModelAdmin):
     list_display = ['name', 'owner', 'city', 'status', 'submitted_at', 'reviewed_at', 'created_at']
     list_filter = ['status', 'city', 'created_at', 'submitted_at']
     search_fields = ['name', 'owner__email', 'city']
     prepopulated_fields = {'slug': ('name',)}
-    readonly_fields = ['created_at', 'updated_at', 'published_at', 'submitted_at', 'reviewed_at', 'reviewed_by']
+    readonly_fields = ['created_at', 'updated_at', 'published_at', 'submitted_at', 'reviewed_at', 'reviewed_by',
+                       'cover_photo_url', 'cover_photo_preview']
+    inlines = [PropertyPhotoInline]
+
+    @admin.display(description='Cover photo')
+    def cover_photo_preview(self, obj):
+        return photo_preview(obj.photos.filter(is_cover=True).first(), height=160)
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        # Photos may have been added/deleted in the inline - keep exactly one cover.
+        form.instance.ensure_cover_photo()
 
     fieldsets = (
         ('Basic Information', {
@@ -45,7 +78,7 @@ class PropertyAdmin(admin.ModelAdmin):
             'fields': ('status', 'submitted_at', 'reviewed_at', 'reviewed_by', 'rejection_reason')
         }),
         ('House Rules & Media', {
-            'fields': ('house_rules', 'cover_photo_url')
+            'fields': ('house_rules', 'cover_photo_preview', 'cover_photo_url')
         }),
         ('Ratings', {
             'fields': ('average_rating', 'total_reviews')
@@ -106,7 +139,35 @@ class PropertyAdmin(admin.ModelAdmin):
 
 @admin.register(PropertyPhoto)
 class PropertyPhotoAdmin(admin.ModelAdmin):
-    list_display = ['property', 'is_cover', 'display_order']
+    list_display = ['property', 'preview', 'is_cover', 'display_order']
+    list_filter = ['is_cover']
+    search_fields = ['property__name']
+    readonly_fields = ['preview', 'is_cover']
+    actions = ['set_as_cover']
+
+    @admin.display(description='Photo')
+    def preview(self, obj):
+        return photo_preview(obj)
+
+    @admin.action(description='⭐ Set as cover (one per property)')
+    def set_as_cover(self, request, queryset):
+        # One cover per property: if several photos of a property are selected, the last one wins.
+        count = 0
+        for photo in queryset.select_related('property'):
+            photo.property.set_cover_photo(photo)
+            count += 1
+        self.message_user(request, f'{count} cover photo(s) set.')
+
+    def delete_model(self, request, obj):
+        property_obj = obj.property
+        super().delete_model(request, obj)
+        property_obj.ensure_cover_photo()
+
+    def delete_queryset(self, request, queryset):
+        properties = {photo.property for photo in queryset.select_related('property')}
+        super().delete_queryset(request, queryset)
+        for property_obj in properties:
+            property_obj.ensure_cover_photo()
 
 @admin.register(RoomType)
 class RoomTypeAdmin(admin.ModelAdmin):

@@ -46,6 +46,16 @@ def starting_price_of(property_obj):
     return str(min_price) if min_price else None
 
 
+def cover_url_of(property_obj):
+    """
+    Cloudinary URL of the property's cover photo (the PropertyPhoto flagged
+    is_cover), falling back to the first photo by display order. None when
+    the property has no photos. Reads photos.all() so a prefetch is reused.
+    """
+    photos = sorted(property_obj.photos.all(), key=lambda p: (not p.is_cover, p.display_order, p.created_at))
+    return photos[0].cloudinary_url if photos else None
+
+
 class AmenitySerializer(serializers.ModelSerializer):
     """Serializer for amenities"""
     class Meta:
@@ -207,6 +217,7 @@ class PropertyListSerializer(serializers.ModelSerializer):
     amenities = serializers.SerializerMethodField()
     photo_count = serializers.SerializerMethodField()
     owner_info = serializers.SerializerMethodField()
+    cover_photo_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Property
@@ -220,6 +231,9 @@ class PropertyListSerializer(serializers.ModelSerializer):
 
     def get_booking_mode(self, obj):
         return booking_mode_of(obj)
+
+    def get_cover_photo_url(self, obj):
+        return cover_url_of(obj)
 
     def get_amenities(self, obj):
         amenities = obj.propertyamenity_set.all()[:5]  # Show first 5
@@ -243,6 +257,7 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
     booking_mode = serializers.SerializerMethodField()
     amenities = serializers.SerializerMethodField()
     photos = PropertyPhotoSerializer(many=True, read_only=True)
+    cover_photo_url = serializers.SerializerMethodField()
     # Whole-property listings (Entry Villa) expose only their "Entire Villa"
     # unit here, so every consumer (guest page, admin review, search cards)
     # sees the villa itself rather than legacy owner-created rooms.
@@ -281,6 +296,9 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
         is the villa's own nightly price.
         """
         return starting_price_of(obj)
+
+    def get_cover_photo_url(self, obj):
+        return cover_url_of(obj)
 
     def get_booking_mode(self, obj):
         return booking_mode_of(obj)
@@ -325,7 +343,8 @@ class PropertyCreateUpdateSerializer(serializers.ModelSerializer):
             'latitude', 'longitude', 'google_maps_url', 'nearby_attractions',
             'house_rules', 'cover_photo_url', 'amenity_ids', 'contact_phone', 'contact_email', 'status'
         ]
-        read_only_fields = ['id', 'status']
+        # cover_photo_url mirrors the chosen cover photo - change it via set-cover, never by URL
+        read_only_fields = ['id', 'status', 'cover_photo_url']
 
     def validate(self, attrs):
         if 'room_types' in self.initial_data:
@@ -485,6 +504,8 @@ class PropertyCardSerializer(serializers.ModelSerializer):
     amenities = serializers.SerializerMethodField()
     min_price = serializers.SerializerMethodField()
     room_count = serializers.SerializerMethodField()
+    # The chosen cover photo (first photo as fallback) - no per-card image request
+    cover_photo_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Property
@@ -502,6 +523,9 @@ class PropertyCardSerializer(serializers.ModelSerializer):
     def get_min_price(self, obj):
         """Get minimum room price (the villa's own price for Entry Villa)"""
         return starting_price_of(obj)
+
+    def get_cover_photo_url(self, obj):
+        return cover_url_of(obj)
 
     def get_room_count(self, obj):
         """Get number of room types (1 - the villa itself - for Entry Villa)"""

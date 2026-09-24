@@ -47,6 +47,8 @@ export interface Property {
   average_rating?: number
   total_reviews?: number
   photos: PropertyPhoto[]
+  /** Cloudinary URL of the chosen cover photo (first photo as fallback); null without photos */
+  cover_photo_url?: string | null
   price_range_min: number
   price_range_max: number
   amenities: Amenity[]
@@ -117,6 +119,18 @@ export interface PropertyPhoto {
   is_cover?: boolean
   caption?: string
   order: number
+}
+
+/** Owner photo management: returned by set-cover and delete-photo */
+export interface PropertyPhotoState {
+  cover_photo_url: string | null
+  photos: Array<{
+    id: string
+    cloudinary_url: string
+    cloudinary_public_id?: string
+    is_cover: boolean
+    display_order: number
+  }>
 }
 
 export interface RoomType {
