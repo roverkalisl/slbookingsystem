@@ -193,12 +193,13 @@ class OwnerInfoPrivacyTestCase(AdminQueueTestBase):
         property_id = self.create_and_submit(self.owner_a, 'Private Villa')
         self.as_user(self.admin).post(f'/api/properties/{property_id}/approve/')
 
-        # Anonymous and other owners see approved properties, but never owner contact details
+        # Anonymous users see approved properties, but never owner contact details
         self.client.force_authenticate(user=None)
         public = next(p for p in self.client.get(QUEUE_URL).data['results'] if p['id'] == property_id)
         self.assertIsNone(public['owner_info'])
-        other = next(p for p in self.as_user(self.owner_b).get(QUEUE_URL).data['results'] if p['id'] == property_id)
-        self.assertIsNone(other['owner_info'])
+        # Another owner's list is their own "My Properties" - owner A's listing is not in it at all
+        other_ids = [p['id'] for p in self.as_user(self.owner_b).get(QUEUE_URL).data['results']]
+        self.assertNotIn(property_id, other_ids)
 
     def test_non_staff_cannot_see_other_owners_pending_properties(self):
         property_id = self.create_and_submit(self.owner_a, 'Owner A Pending')

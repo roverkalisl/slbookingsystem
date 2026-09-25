@@ -189,6 +189,10 @@ export interface Booking {
   special_requests?: string
   created_at: string
   guests?: BookingGuest[]
+  /** Property owner's WhatsApp - returned only to this booking's guest (null when not set) */
+  owner_whatsapp_number?: string | null
+  /** https://wa.me/<number>?text=<booking inquiry> - returned only to this booking's guest */
+  owner_whatsapp_url?: string | null
 }
 
 export interface BookingGuest {

@@ -22,7 +22,7 @@ export default function RoomsPage() {
     try {
       setLoading(true)
       const [propData, roomsData] = await Promise.all([
-        api.getProperty(id),
+        api.getOwnedProperty(id), // owner-only: 404 for another owner's property
         api.getPropertyRooms(id),
       ])
       setProperty(propData)

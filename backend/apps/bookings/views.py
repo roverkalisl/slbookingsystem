@@ -163,8 +163,8 @@ class BookingViewSet(viewsets.ModelViewSet):
             except Exception:
                 logger.exception('Failed to send new-booking notification for booking %s', booking.id)
 
-            # Return booking details
-            output_serializer = BookingDetailSerializer(booking)
+            # Return booking details (request context: the guest also gets the owner's WhatsApp contact)
+            output_serializer = BookingDetailSerializer(booking, context={'request': request})
 
             return Response(
                 {
@@ -208,7 +208,7 @@ class BookingViewSet(viewsets.ModelViewSet):
         """Get booking details with permission check"""
         try:
             booking = BookingService.get_booking_details(pk, user=request.user)
-            serializer = BookingDetailSerializer(booking)
+            serializer = BookingDetailSerializer(booking, context={'request': request})
             return Response(
                 {
                     'success': True,

@@ -5,6 +5,7 @@ Views for guest reviews.
 from rest_framework import viewsets, permissions
 from rest_framework.exceptions import PermissionDenied
 from django.db import IntegrityError
+from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework import status
 
@@ -78,7 +79,8 @@ class ReviewResponseViewSet(viewsets.ModelViewSet):
         return ReviewResponse.objects.filter(review_id=self.kwargs.get('review_pk'))
 
     def perform_create(self, serializer):
-        review = Review.objects.get(id=self.kwargs.get('review_pk'))
+        # Missing review -> 404 (was an unhandled DoesNotExist / 500)
+        review = get_object_or_404(Review, id=self.kwargs.get('review_pk'))
 
         if review.property.owner != self.request.user and not self.request.user.is_staff:
             raise PermissionDenied("You can only respond to reviews on your own properties.")

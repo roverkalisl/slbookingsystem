@@ -254,6 +254,8 @@ class PropertyListSerializer(serializers.ModelSerializer):
 class PropertyDetailSerializer(serializers.ModelSerializer):
     """Detailed serializer for property view"""
     property_type_name = serializers.CharField(source='property_type.name', read_only=True)
+    # Lets the owner edit form preselect the current type
+    property_type_id = serializers.IntegerField(read_only=True, allow_null=True)
     booking_mode = serializers.SerializerMethodField()
     amenities = serializers.SerializerMethodField()
     photos = PropertyPhotoSerializer(many=True, read_only=True)
@@ -262,7 +264,9 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
     # unit here, so every consumer (guest page, admin review, search cards)
     # sees the villa itself rather than legacy owner-created rooms.
     room_types = serializers.SerializerMethodField()
-    owner_email = serializers.CharField(source='owner.email', read_only=True)
+    # Owner identity is only for the owner themself and admins - the detail
+    # endpoint is also the public listing page (see _can_see_owner_identity).
+    owner_email = serializers.SerializerMethodField()
     owner_name = serializers.SerializerMethodField()
     contact = PropertyContactSerializer(read_only=True)
     reviewed_by_name = serializers.CharField(source='reviewed_by.get_full_name', read_only=True, allow_null=True)
@@ -271,7 +275,7 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Property
         fields = [
-            'id', 'owner', 'owner_email', 'owner_name', 'property_type_name', 'booking_mode',
+            'id', 'owner', 'owner_email', 'owner_name', 'property_type_id', 'property_type_name', 'booking_mode',
             'name', 'slug', 'description', 'short_description',
             'address', 'city', 'district', 'province', 'postal_code',
             'latitude', 'longitude', 'google_maps_url', 'nearby_attractions',
@@ -319,7 +323,17 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
             for pa in amenities
         ]
 
+    def _can_see_owner_identity(self, obj):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        return bool(user and user.is_authenticated and (user.is_staff or obj.owner_id == user.id))
+
+    def get_owner_email(self, obj):
+        return obj.owner.email if self._can_see_owner_identity(obj) else None
+
     def get_owner_name(self, obj):
+        if not self._can_see_owner_identity(obj):
+            return None
         return obj.owner.get_full_name() or obj.owner.email
 
 
@@ -334,6 +348,9 @@ class PropertyCreateUpdateSerializer(serializers.ModelSerializer):
     )
     contact_phone = serializers.CharField(write_only=True, required=False, allow_blank=True)
     contact_email = serializers.EmailField(write_only=True, required=False, allow_blank=True)
+    # Stored on the existing PropertyContact.whatsapp_number (digits only,
+    # e.g. 94771234567); blank clears it. Returned via `contact` on the detail.
+    whatsapp_number = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=30)
 
     class Meta:
         model = Property
@@ -341,10 +358,22 @@ class PropertyCreateUpdateSerializer(serializers.ModelSerializer):
             'id', 'property_type', 'name', 'description', 'short_description',
             'address', 'city', 'district', 'province', 'postal_code',
             'latitude', 'longitude', 'google_maps_url', 'nearby_attractions',
-            'house_rules', 'cover_photo_url', 'amenity_ids', 'contact_phone', 'contact_email', 'status'
+            'house_rules', 'cover_photo_url', 'amenity_ids', 'contact_phone', 'contact_email',
+            'whatsapp_number', 'status'
         ]
         # cover_photo_url mirrors the chosen cover photo - change it via set-cover, never by URL
         read_only_fields = ['id', 'status', 'cover_photo_url']
+
+    def validate_whatsapp_number(self, value):
+        from apps.notifications.whatsapp import normalize_whatsapp_number
+        if not value or not value.strip():
+            return ''
+        number = normalize_whatsapp_number(value)
+        if number is None:
+            raise serializers.ValidationError(
+                'Enter a valid WhatsApp number in international format, e.g. +94771234567.'
+            )
+        return number
 
     def validate(self, attrs):
         if 'room_types' in self.initial_data:
@@ -363,6 +392,7 @@ class PropertyCreateUpdateSerializer(serializers.ModelSerializer):
         amenities = validated_data.pop('amenities', [])
         contact_phone = validated_data.pop('contact_phone', '')
         contact_email = validated_data.pop('contact_email', '')
+        whatsapp_number = validated_data.pop('whatsapp_number', '')
 
         # Get current user from request context
         request = self.context.get('request')
@@ -394,11 +424,12 @@ class PropertyCreateUpdateSerializer(serializers.ModelSerializer):
                     ])
                     logger.info(f"Added {len(amenities)} amenities to property {property_obj.id}")
 
-                if contact_phone or contact_email:
+                if contact_phone or contact_email or whatsapp_number:
                     PropertyContact.objects.create(
                         property=property_obj,
                         contact_phone=contact_phone,
                         email=contact_email,
+                        whatsapp_number=whatsapp_number or None,
                     )
 
         except Exception as e:
@@ -416,6 +447,7 @@ class PropertyCreateUpdateSerializer(serializers.ModelSerializer):
         amenities = validated_data.pop('amenities', None)
         contact_phone = validated_data.pop('contact_phone', None)
         contact_email = validated_data.pop('contact_email', None)
+        whatsapp_number = validated_data.pop('whatsapp_number', None)
 
         with transaction.atomic():
             # Update property fields
@@ -431,12 +463,14 @@ class PropertyCreateUpdateSerializer(serializers.ModelSerializer):
                     for amenity in amenities
                 ])
 
-            if contact_phone is not None or contact_email is not None:
+            if contact_phone is not None or contact_email is not None or whatsapp_number is not None:
                 contact, _ = PropertyContact.objects.get_or_create(property=instance)
                 if contact_phone is not None:
                     contact.contact_phone = contact_phone
                 if contact_email is not None:
                     contact.email = contact_email
+                if whatsapp_number is not None:
+                    contact.whatsapp_number = whatsapp_number or None  # blank clears it
                 contact.save()
 
         return instance

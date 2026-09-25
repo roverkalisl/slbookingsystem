@@ -7,7 +7,27 @@ from datetime import date
 from decimal import Decimal
 
 from .models import Booking, BookingGuest, Availability
+from apps.notifications.whatsapp import booking_owner_whatsapp
 from apps.properties.models import RoomType, Property
+
+
+def owner_whatsapp_for(serializer, booking) -> dict:
+    """
+    Owner WhatsApp contact for a booking - ONLY for the booking's own guest
+    (or an admin). Everyone else, including the owner viewing their own
+    property's bookings, gets nulls. Needs the request in serializer context.
+    """
+    empty = {'owner_whatsapp_number': None, 'owner_whatsapp_url': None}
+    request = serializer.context.get('request')
+    user = getattr(request, 'user', None)
+    if not user or not user.is_authenticated:
+        return empty
+    if booking.guest_id != user.id and not user.is_staff:
+        return empty
+    cache = serializer.context.setdefault('_owner_whatsapp', {})
+    if booking.pk not in cache:
+        cache[booking.pk] = booking_owner_whatsapp(booking)
+    return cache[booking.pk]
 
 
 class BookingGuestSerializer(serializers.ModelSerializer):
@@ -34,6 +54,9 @@ class BookingListSerializer(serializers.ModelSerializer):
     guest_name = serializers.SerializerMethodField()
     guest_email = serializers.SerializerMethodField()
     guest_phone = serializers.SerializerMethodField()
+    # Guest -> owner WhatsApp (null unless the requester is this booking's guest)
+    owner_whatsapp_number = serializers.SerializerMethodField()
+    owner_whatsapp_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -41,9 +64,16 @@ class BookingListSerializer(serializers.ModelSerializer):
             'id', 'booking_reference', 'property_id', 'property_name', 'room_type_name',
             'guest_name', 'guest_email', 'guest_phone', 'number_of_adults', 'number_of_children',
             'check_in_date', 'check_out_date', 'number_of_nights',
-            'total_price', 'status', 'payment_status', 'created_at'
+            'total_price', 'status', 'payment_status', 'created_at',
+            'owner_whatsapp_number', 'owner_whatsapp_url',
         ]
         read_only_fields = fields
+
+    def get_owner_whatsapp_number(self, obj):
+        return owner_whatsapp_for(self, obj)['owner_whatsapp_number']
+
+    def get_owner_whatsapp_url(self, obj):
+        return owner_whatsapp_for(self, obj)['owner_whatsapp_url']
 
     def get_guest_name(self, obj):
         """Get primary guest name"""
@@ -77,6 +107,9 @@ class BookingDetailSerializer(serializers.ModelSerializer):
     room_type_name = serializers.CharField(source='room_type.name', read_only=True)
     guests = BookingGuestSerializer(many=True, read_only=True)
     property_cover = serializers.URLField(source='property.cover_photo_url', read_only=True)
+    # Guest -> owner WhatsApp (null unless the requester is this booking's guest)
+    owner_whatsapp_number = serializers.SerializerMethodField()
+    owner_whatsapp_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -86,9 +119,16 @@ class BookingDetailSerializer(serializers.ModelSerializer):
             'number_of_adults', 'number_of_children', 'number_of_rooms',
             'room_price', 'subtotal', 'discount', 'service_fee', 'tax', 'total_price',
             'special_requests', 'guests', 'status', 'payment_status',
-            'created_at', 'updated_at'
+            'created_at', 'updated_at',
+            'owner_whatsapp_number', 'owner_whatsapp_url',
         ]
         read_only_fields = fields
+
+    def get_owner_whatsapp_number(self, obj):
+        return owner_whatsapp_for(self, obj)['owner_whatsapp_number']
+
+    def get_owner_whatsapp_url(self, obj):
+        return owner_whatsapp_for(self, obj)['owner_whatsapp_url']
 
 
 def validate_whole_property_rooms(room_type, num_rooms):

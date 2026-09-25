@@ -26,6 +26,26 @@ class IsAdminUser(permissions.BasePermission):
         )
 
 
+class IsPropertyOwnerOrAdmin(permissions.BasePermission):
+    """
+    Allow only users with the property_owner role, or admins (same admin
+    definition as IsAdminUser: is_staff, is_superuser or the super_admin
+    role). Roles are read from the database - never from the request.
+    """
+
+    message = 'Only property owners can create properties.'
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(
+            user and
+            user.is_authenticated and (
+                user.is_admin or
+                user.has_role('property_owner')
+            )
+        )
+
+
 class IsSuperAdmin(permissions.BasePermission):
     """
     Allow access only to Django superuser.

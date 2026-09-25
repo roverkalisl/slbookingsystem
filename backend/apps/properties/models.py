@@ -481,3 +481,12 @@ class PropertyContact(models.Model):
 
     def __str__(self):
         return f"Contact for {self.property.name}"
+
+    def save(self, *args, **kwargs):
+        # Store the WhatsApp number in international digits form (94771234567).
+        # A value that cannot be normalised is kept as entered - it is simply
+        # not offered as a WhatsApp link (see apps.notifications.whatsapp).
+        from apps.notifications.whatsapp import normalize_whatsapp_number
+        if self.whatsapp_number:
+            self.whatsapp_number = normalize_whatsapp_number(self.whatsapp_number) or self.whatsapp_number
+        super().save(*args, **kwargs)

@@ -41,8 +41,8 @@ export default function RoomPhotosPage() {
   const loadData = async (propertyId: string, roomId: string) => {
     try {
       setLoading(true)
-      // Get property to verify ownership, then get room
-      const property = await api.getProperty(propertyId)
+      // Owner-only property load (404 for another owner's property), then the room
+      const property = await api.getOwnedProperty(propertyId)
       if (property.booking_mode === 'whole_property') {
         // Entry Villa: no rooms - its property photos are the villa's gallery
         setIsVilla(true)

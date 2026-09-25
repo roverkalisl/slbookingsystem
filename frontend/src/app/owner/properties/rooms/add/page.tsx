@@ -40,9 +40,12 @@ export default function AddRoomPage() {
     const id = new URLSearchParams(window.location.search).get('propertyId')
     setPropertyId(id)
     if (id) {
-      api.getProperty(id)
+      // Owner-only load: another owner's property id answers 404
+      api.getOwnedProperty(id)
         .then((property) => setIsVilla(property.booking_mode === 'whole_property'))
-        .catch(() => { /* the save call reports any real problem */ })
+        .catch((err: any) => {
+          if (err.response?.status === 404) setError('Property not found.')
+        })
     }
   }, [])
 

@@ -9,6 +9,7 @@ import Link from 'next/link'
 import { useAuth } from '@/stores/auth'
 import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
+import { safeWhatsAppUrl } from '@/lib/whatsapp'
 import type { Booking, BookingPaymentStatus } from '@/types'
 import { Calendar, MapPin, DollarSign, Clock, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
 
@@ -49,6 +50,7 @@ export default function BookingsPage() {
   const [payingId, setPayingId] = useState<string | null>(null)
   const [payErrors, setPayErrors] = useState<Record<string, string>>({})
   const [returnNotice, setReturnNotice] = useState<ReturnNotice | null>(null)
+  const [createdReference, setCreatedReference] = useState<string | null>(null)
   const returnHandled = useRef(false)
 
   // Check authentication
@@ -74,8 +76,13 @@ export default function BookingsPage() {
       const params = new URLSearchParams(window.location.search)
       const payment = params.get('payment')
       const reference = params.get('booking')
+      // Set by the property page right after a booking is created
+      const created = params.get('booking_created')
       if ((payment === 'success' || payment === 'cancelled') && reference) {
         returnParams = { payment, reference }
+      }
+      if (created) setCreatedReference(created)
+      if (returnParams || created) {
         window.history.replaceState(null, '', window.location.pathname)
       }
     }
@@ -220,9 +227,33 @@ export default function BookingsPage() {
     return null
   }
 
+  const createdBooking = createdReference
+    ? bookings.find((b) => b.booking_reference === createdReference)
+    : undefined
+  const createdWhatsApp = safeWhatsAppUrl(createdBooking?.owner_whatsapp_url)
+
   return (
     <div className="container py-8">
       <h1 className="text-3xl font-bold mb-8">My Bookings</h1>
+
+      {createdReference && (
+        <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+          <p>
+            Booking <strong>{createdReference}</strong> created. You can pay online below
+            {createdWhatsApp ? ' or message the property owner on WhatsApp to confirm the details.' : '.'}
+          </p>
+          {createdWhatsApp && (
+            <a
+              href={createdWhatsApp}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 inline-block rounded-lg bg-green-600 px-4 py-2 font-medium text-white hover:bg-green-700"
+            >
+              Contact Owner on WhatsApp
+            </a>
+          )}
+        </div>
+      )}
 
       {returnNotice && (
         <div
@@ -367,6 +398,20 @@ export default function BookingsPage() {
                       >
                         View Details
                       </Link>
+
+                      {/* Owner's WhatsApp with a prefilled booking message - the number itself is never shown */}
+                      {safeWhatsAppUrl(booking.owner_whatsapp_url) ? (
+                        <a
+                          href={safeWhatsAppUrl(booking.owner_whatsapp_url)!}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full block text-center px-4 py-2 border border-green-600 text-green-700 rounded-lg hover:bg-green-50 transition"
+                        >
+                          Contact Owner on WhatsApp
+                        </a>
+                      ) : (
+                        <p className="text-xs text-gray-500 text-center">The owner has not added a WhatsApp number yet.</p>
+                      )}
 
                       {canCancelBooking(booking) && (
                         <button

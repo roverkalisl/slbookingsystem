@@ -36,7 +36,8 @@ export default function PropertyManagementClient({ propertyId }: { propertyId: s
 
   const loadProperty = async () => {
     try {
-      const data = await api.getProperty(propertyId)
+      // Owner-only endpoint: another owner's property id answers 404
+      const data = await api.getOwnedProperty(propertyId)
       setProperty(data)
       if (data.photos) {
         const mappedPhotos = data.photos.map((p: any) => ({
@@ -204,12 +205,23 @@ export default function PropertyManagementClient({ propertyId }: { propertyId: s
           {/* Overview Tab */}
           {activeTab === 'overview' && (
             <section className="rounded-lg bg-white p-6 shadow">
-              <h2 className="text-xl font-semibold">Property Overview</h2>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-xl font-semibold">Property Overview</h2>
+                {['draft', 'rejected'].includes(property.status) && (
+                  <Link
+                    href={`/owner/properties/add?propertyId=${encodeURIComponent(propertyId)}`}
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                  >
+                    Edit details
+                  </Link>
+                )}
+              </div>
               <p className="mt-3 whitespace-pre-wrap text-gray-700">{property.description}</p>
               <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
                 <div><dt className="font-semibold">Address</dt><dd>{property.address}, {property.city}</dd></div>
                 <div><dt className="font-semibold">Type</dt><dd>{property.property_type?.name || 'Not set'}</dd></div>
-                <div><dt className="font-semibold">Contact</dt><dd>{property.contact_phone || property.contact_email || 'Not provided'}</dd></div>
+                <div><dt className="font-semibold">Contact</dt><dd>{property.contact?.contact_phone || property.contact?.email || 'Not provided'}</dd></div>
+                <div><dt className="font-semibold">WhatsApp</dt><dd>{property.contact?.whatsapp_number ? `+${property.contact.whatsapp_number}` : 'Not provided'}</dd></div>
               </dl>
             </section>
           )}

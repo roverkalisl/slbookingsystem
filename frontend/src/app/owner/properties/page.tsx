@@ -242,7 +242,9 @@ export default function OwnerProperties() {
                         </Link>
                         {property.canEdit && (
                           <Link
-                            href={`/owner/properties/${property.id}/edit`}
+                            // Property form in edit mode (there is no /owner/properties/{id}/edit page
+                            // in the static export - that link fell through to the wrong page)
+                            href={`/owner/properties/add?propertyId=${encodeURIComponent(property.id)}`}
                             className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                             title="Edit"
                           >

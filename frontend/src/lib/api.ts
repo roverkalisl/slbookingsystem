@@ -255,6 +255,16 @@ class ApiClient {
     return all
   }
 
+  /**
+   * Owner Portal: the property only if the logged-in user owns it (or is an
+   * admin) - GET /properties/{id}/manage/ answers 404 for anyone else, unlike
+   * the public getProperty() which returns any approved listing.
+   */
+  async getOwnedProperty(id: string): Promise<Property> {
+    const response = await this.client.get<any>(`/properties/${id}/manage/`)
+    return this.normalizeProperty(response.data.data || response.data)
+  }
+
   async getProperty(id: string): Promise<Property> {
     const response = await this.client.get<any>(`/properties/${id}/`)
     return this.normalizeProperty(response.data.data || response.data)

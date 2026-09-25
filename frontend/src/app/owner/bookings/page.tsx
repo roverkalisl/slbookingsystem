@@ -2,13 +2,8 @@
 import { useEffect, useState } from 'react'
 import { Search } from 'lucide-react'
 import { api } from '@/lib/api'
+import { whatsappLink } from '@/lib/whatsapp'
 import type { Booking } from '@/types'
-
-function whatsappLink(phone: string | undefined, message: string) {
-  if (!phone) return null
-  const digits = phone.replace(/[^\d]/g, '')
-  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`
-}
 
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-800',

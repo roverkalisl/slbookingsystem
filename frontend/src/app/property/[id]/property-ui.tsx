@@ -12,6 +12,7 @@ import Link from 'next/link'
 import { useAuth } from '@/stores/auth'
 import { api } from '@/lib/api'
 import { useDynamicRouteId } from '@/lib/useDynamicRouteId'
+import { whatsappLink } from '@/lib/whatsapp'
 import type { Property, BookingPrice } from '@/types'
 import {
   Star,
@@ -158,8 +159,10 @@ export function PropertyContent() {
         num_children: 0,
       })
       // /booking/{id} has no page in this static export - send the guest to
-      // My Bookings, where the booking (and its payment action) is listed.
-      window.location.href = '/bookings'
+      // My Bookings, which confirms the new booking (payment + WhatsApp owner).
+      window.location.href = booking?.booking_reference
+        ? `/bookings?booking_created=${encodeURIComponent(booking.booking_reference)}`
+        : '/bookings'
     } catch (error: any) {
       console.error('Failed to create booking:', error)
       // Backend is the final authority on availability (HTTP 409) even if
@@ -202,6 +205,7 @@ export function PropertyContent() {
   // without photos shows a neutral box instead of a broken image.
   const currentPhoto = photos[photoIndex] || null
   const sidebarPrice = Number(selectedRoom?.pricing?.base_price ?? property.price_range_min ?? 0)
+  const propertyWhatsApp = whatsappLink(property.contact?.whatsapp_number, `Hi, I have a question about ${property.name}.`)
 
   return (
     <div className="container py-8">
@@ -432,18 +436,19 @@ export function PropertyContent() {
           )}
 
           {/* Contact Property */}
-          {(property.contact?.whatsapp_number || property.contact?.email) && (
+          {(propertyWhatsApp || property.contact?.email) && (
             <div className="mb-8">
               <h2 className="text-2xl font-bold mb-4">Contact This Property</h2>
               <div className="flex flex-wrap gap-3">
-                {property.contact?.whatsapp_number && (
+                {/* The property's published WhatsApp contact - opened as a link, never printed as text */}
+                {propertyWhatsApp && (
                   <a
-                    href={`https://wa.me/${property.contact.whatsapp_number.replace(/[^\d]/g, '')}?text=${encodeURIComponent(`Hi, I have a question about ${property.name}.`)}`}
+                    href={propertyWhatsApp}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="px-5 py-3 bg-green-50 text-green-700 rounded-lg font-medium hover:bg-green-100"
                   >
-                    WhatsApp
+                    Contact Owner on WhatsApp
                   </a>
                 )}
                 {property.contact?.email && (

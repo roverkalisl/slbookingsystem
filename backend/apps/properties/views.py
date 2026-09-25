@@ -7,7 +7,7 @@ import time
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.shortcuts import get_object_or_404
@@ -69,6 +69,7 @@ from .serializers import (
     PropertyCardSerializer, SearchFilterSerializer,
     DestinationDetailSerializer, SearchResultsSerializer
 )
+from apps.core.permissions import IsPropertyOwnerOrAdmin
 from .pricing import PricingCalculator
 from .search import PropertySearchService, DestinationSearchService, SearchFilters
 
@@ -165,10 +166,16 @@ class PropertyViewSet(viewsets.ModelViewSet):
             logger.debug(f"[VIEWSET] User is guest, returning approved properties only")
             return Property.objects.filter(status='approved')
 
-        # Property owners see:
-        # - Their own properties (all statuses)
-        # - Other owners' approved properties
+        # Property owners:
+        # - list (GET /api/properties/ = "My Properties", dashboard, calendar):
+        #   ONLY their own properties, at every status. Other owners' listings
+        #   are never part of an owner's management list.
+        # - everything else: their own properties plus other owners' APPROVED
+        #   properties, so the public property page still works while logged
+        #   in. Every write/management action re-checks ownership explicitly.
         if user.has_role('property_owner'):
+            if self.action == 'list':
+                return Property.objects.filter(owner=user)
             queryset = Property.objects.filter(
                 owner=user
             ) | Property.objects.filter(status='approved')
@@ -183,6 +190,12 @@ class PropertyViewSet(viewsets.ModelViewSet):
         # Default: show only approved properties
         logger.debug(f"[VIEWSET] Default: returning approved properties only")
         return Property.objects.filter(status='approved')
+
+    def get_permissions(self):
+        """Only property owners (and admins) may create properties - guests get 403."""
+        if self.action == 'create':
+            return [permissions.IsAuthenticated(), IsPropertyOwnerOrAdmin()]
+        return super().get_permissions()
 
     def get_serializer_class(self):
         """Choose serializer based on action"""
@@ -395,6 +408,23 @@ class PropertyViewSet(viewsets.ModelViewSet):
 
         unit.refresh_from_db()
         return Response({'success': True, 'data': villa_details_payload(unit)}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], permission_classes=[permissions.IsAuthenticated], url_path='manage')
+    def manage(self, request, pk=None):
+        """
+        Owner-management view of a property (Owner Portal: manage, edit, rooms,
+        photos). Unlike the public detail, which shows any approved listing,
+        this answers 404 unless the requester owns the property or is an admin -
+        so another owner's property can't be opened in the Owner Portal by
+        pasting its id into the URL.
+
+        GET /api/properties/{id}/manage/
+        """
+        property_obj = self.get_object()
+        if property_obj.owner != request.user and not request.user.is_staff:
+            raise NotFound('Property not found.')
+        return Response(PropertyDetailSerializer(property_obj, context={'request': request}).data,
+                        status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_path='submit-for-approval')
     def submit_for_approval(self, request, pk=None):
@@ -835,6 +865,11 @@ class RoomTypeViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("You can only edit rooms in your own properties.")
         if room_type.is_property_unit:
             raise ValidationError({'error': VILLA_UNIT_MANAGED})
+        # The payload may name a different property: an owner must never be
+        # able to move their room into (or attach it to) another owner's property.
+        target = serializer.validated_data.get('property')
+        if target is not None and target.owner != self.request.user and not self.request.user.is_staff:
+            raise PermissionDenied("You can only assign rooms to your own properties.")
 
         serializer.save()
 
@@ -942,10 +977,12 @@ class RoomTypeViewSet(viewsets.ModelViewSet):
             return Response({'error': 'photo_id is required'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
+            # Scoped to this room: another room's photo id is simply "not found"
             photo = RoomTypePhoto.objects.get(id=photo_id, room_type=room_type)
             photo.delete()
             return Response({'success': True, 'message': 'Photo deleted successfully'}, status=status.HTTP_200_OK)
-        except RoomTypePhoto.DoesNotExist:
+        except (RoomTypePhoto.DoesNotExist, ValueError, DjangoValidationError):
+            # Missing, another room's, or malformed id (was a 500 for non-UUIDs)
             return Response({'error': 'Photo not found'}, status=status.HTTP_404_NOT_FOUND)
 
     @action(detail=True, methods=['get', 'post'], permission_classes=[permissions.IsAuthenticated])
