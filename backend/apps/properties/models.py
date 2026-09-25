@@ -256,6 +256,33 @@ class PropertyPhoto(models.Model):
         return f"Photo for {self.property.name}"
 
 
+class PropertyView(models.Model):
+    """
+    One public view of an approved property by one visitor on one day.
+
+    visitor_hash is a one-way HMAC (SECRET_KEY) of IP address + browser
+    identifier + day - no raw IP, user id or contact detail is stored. The
+    unique constraint means repeated or concurrent requests from the same
+    visitor on the same day can never add a second row.
+    Recorded by POST /api/properties/{id}/view/ (see apps.properties.view_tracking).
+    """
+    id = models.BigAutoField(primary_key=True)
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='page_views')
+    viewed_on = models.DateField(db_index=True)
+    visitor_hash = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'property_views'
+        constraints = [
+            models.UniqueConstraint(fields=['property', 'viewed_on', 'visitor_hash'],
+                                    name='unique_daily_property_view'),
+        ]
+
+    def __str__(self):
+        return f"View of {self.property_id} on {self.viewed_on}"
+
+
 class PropertyAmenity(models.Model):
     """Property-amenity relationship"""
     id = models.AutoField(primary_key=True)

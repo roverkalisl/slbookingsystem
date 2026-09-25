@@ -18,6 +18,7 @@ import {
   Clock,
   DollarSign,
   Activity,
+  Eye,
 } from 'lucide-react'
 
 interface DashboardStats {
@@ -30,6 +31,18 @@ interface DashboardStats {
   activeBookings: number
   platformRevenue: number
   averageRating: number
+  totalPropertyViews: number
+  propertyViewsToday: number
+  propertyViewsThisMonth: number
+  mostViewedProperties: MostViewedProperty[]
+}
+
+/** GET /api/admin/stats/dashboard/ most_viewed_properties (approved properties only) */
+interface MostViewedProperty {
+  id: string
+  name: string
+  city: string
+  view_count: number
 }
 
 export default function AdminDashboard() {
@@ -61,6 +74,10 @@ export default function AdminDashboard() {
           activeBookings: dashStats.confirmed_bookings || 0,
           platformRevenue: dashStats.platform_revenue || 0,
           averageRating: Number(dashStats.average_rating || 0),
+          totalPropertyViews: dashStats.total_property_views || 0,
+          propertyViewsToday: dashStats.property_views_today || 0,
+          propertyViewsThisMonth: dashStats.property_views_this_month || 0,
+          mostViewedProperties: dashStats.most_viewed_properties || [],
         })
       } catch (error) {
         console.error('Failed to load admin dashboard:', error)
@@ -171,6 +188,28 @@ export default function AdminDashboard() {
         />
       </div>
 
+      {/* Property page views (one per visitor per day; owner/admin views not counted) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <StatCard
+          icon={<Eye className="w-6 h-6" style={{ color: '#6366F1' }} />}
+          label="Total Property Views"
+          value={(stats?.totalPropertyViews || 0).toLocaleString()}
+          color="#6366F1"
+        />
+        <StatCard
+          icon={<Eye className="w-6 h-6" style={{ color: '#0EA5E9' }} />}
+          label="Views Today"
+          value={(stats?.propertyViewsToday || 0).toLocaleString()}
+          color="#0EA5E9"
+        />
+        <StatCard
+          icon={<Eye className="w-6 h-6" style={{ color: '#84CC16' }} />}
+          label="Views This Month"
+          value={(stats?.propertyViewsThisMonth || 0).toLocaleString()}
+          color="#84CC16"
+        />
+      </div>
+
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Pending Properties for Approval */}
@@ -222,6 +261,40 @@ export default function AdminDashboard() {
               <div className="p-6 text-center text-gray-500">
                 <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-2" />
                 <p>No properties pending approval</p>
+              </div>
+            )}
+          </div>
+
+          {/* Most Viewed Properties (approved/public only) */}
+          <div className="bg-white rounded-lg shadow mt-8">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-xl font-bold">Most Viewed Properties</h2>
+            </div>
+            {(stats?.mostViewedProperties || []).length > 0 ? (
+              <div className="divide-y">
+                {(stats?.mostViewedProperties || []).map((item, index) => (
+                  <div key={item.id} className="p-6 hover:bg-gray-50 transition-colors flex items-center justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-gray-900">{index + 1}. {item.name}</h3>
+                      <p className="text-sm text-gray-600 mt-1">{item.city}</p>
+                      <p className="text-xs text-gray-500 mt-1 break-all">ID: {item.id}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-2xl font-bold">{item.view_count.toLocaleString()}</p>
+                      <p className="text-xs text-gray-500">views</p>
+                    </div>
+                    <Link
+                      href={`/admin/properties/${item.id}`}
+                      className="ml-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium"
+                    >
+                      View
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-6 text-center text-gray-500">
+                <p>No property views recorded yet</p>
               </div>
             )}
           </div>

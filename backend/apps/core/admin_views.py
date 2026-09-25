@@ -3,6 +3,8 @@ Admin views for user management and dashboard statistics.
 """
 
 from decimal import Decimal
+from django.db.models import Count
+from django.utils import timezone
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -18,9 +20,37 @@ from .admin_serializers import (
     AdminUserActivateDeactivateSerializer,
     AdminDashboardStatsSerializer,
 )
-from apps.properties.models import Property
+from apps.properties.models import Property, PropertyView
 from apps.bookings.models import Booking
 from apps.payments.models import Payment
+
+MOST_VIEWED_LIMIT = 10
+
+
+def property_view_stats() -> dict:
+    """
+    Public property page views (one per visitor per day, see
+    apps.properties.view_tracking): all time, today, this calendar month, and
+    the most viewed APPROVED properties.
+    """
+    today = timezone.localdate()
+    views = PropertyView.objects.all()
+    most_viewed = (
+        Property.objects.filter(status='approved')
+        .annotate(view_count=Count('page_views'))
+        .filter(view_count__gt=0)
+        .order_by('-view_count', 'name')
+        .values('id', 'name', 'city', 'view_count')[:MOST_VIEWED_LIMIT]
+    )
+    return {
+        'total_property_views': views.count(),
+        'property_views_today': views.filter(viewed_on=today).count(),
+        'property_views_this_month': views.filter(viewed_on__gte=today.replace(day=1), viewed_on__lte=today).count(),
+        'most_viewed_properties': [
+            {'id': str(row['id']), 'name': row['name'], 'city': row['city'], 'view_count': row['view_count']}
+            for row in most_viewed
+        ],
+    }
 
 
 class AdminUserViewSet(viewsets.ReadOnlyModelViewSet):
@@ -180,6 +210,7 @@ class AdminStatsViewSet(viewsets.ViewSet):
             'cancelled_bookings': cancelled_bookings,
             'platform_revenue': platform_revenue,
             'average_rating': average_rating,
+            **property_view_stats(),
         }
 
         serializer = AdminDashboardStatsSerializer(stats)

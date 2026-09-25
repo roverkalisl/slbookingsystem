@@ -134,3 +134,9 @@ class AdminDashboardStatsSerializer(serializers.Serializer):
         required=False,
         default=0
     )
+
+    # Public property page views (apps.properties.PropertyView - one per visitor per day)
+    total_property_views = serializers.IntegerField(default=0)
+    property_views_today = serializers.IntegerField(default=0)
+    property_views_this_month = serializers.IntegerField(default=0)
+    most_viewed_properties = serializers.ListField(child=serializers.DictField(), default=list)

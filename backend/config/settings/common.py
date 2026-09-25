@@ -321,3 +321,9 @@ STRIPE_LIVE_PUBLIC_KEY = config('STRIPE_LIVE_PUBLIC_KEY', default='')
 # Public site URL used for Stripe Checkout success/cancel redirects
 # (reuses the existing NEXT_PUBLIC_SITE_URL deployment variable).
 SITE_URL = config('NEXT_PUBLIC_SITE_URL', default='http://localhost:3000').rstrip('/')
+
+# Canonical public domain for SEO only (robots.txt, sitemap.xml, canonical and
+# Open Graph URLs). Kept separate from SITE_URL on purpose: SITE_URL is where
+# Stripe returns guests after payment, so it must stay on a domain that is
+# already serving the app.
+CANONICAL_SITE_URL = config('CANONICAL_SITE_URL', default='https://slbooking.hotel.lk').rstrip('/')

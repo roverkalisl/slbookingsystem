@@ -409,6 +409,26 @@ class PropertyViewSet(viewsets.ModelViewSet):
         unit.refresh_from_db()
         return Response({'success': True, 'data': villa_details_payload(unit)}, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], permission_classes=[permissions.AllowAny], url_path='view')
+    def track_view(self, request, pk=None):
+        """
+        Count a public view of an approved property (called by the public
+        property page only). At most one view per visitor per day; the
+        property's owner and admins are not counted. Anonymous-safe: the
+        response only says whether this call added a view.
+
+        POST /api/properties/{id}/view/
+        """
+        from .view_tracking import record_property_view
+        try:
+            property_obj = Property.objects.filter(pk=pk, status='approved').first()
+        except (ValueError, DjangoValidationError):
+            property_obj = None
+        if property_obj is None:
+            raise NotFound('Property not found.')
+        counted = record_property_view(property_obj, request)
+        return Response({'success': True, 'counted': counted}, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['get'], permission_classes=[permissions.IsAuthenticated], url_path='manage')
     def manage(self, request, pk=None):
         """

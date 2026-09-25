@@ -17,7 +17,7 @@ from config.urls import resolve_frontend_html
 
 class ResolveFrontendHtmlTests(SimpleTestCase):
     FILES = [
-        'index.html', 'login.html', 'bookings.html', 'search.html',
+        'index.html', '404.html', 'login.html', 'bookings.html', 'search.html',
         'property/0.html', 'admin/properties/0.html', 'admin/properties.html',
         'owner/properties/manage.html',
     ]
@@ -60,13 +60,16 @@ class ResolveFrontendHtmlTests(SimpleTestCase):
     def test_admin_property_list_is_not_treated_as_detail(self):
         self.assertEqual(self.resolve('admin/properties'), 'admin/properties.html')
 
-    def test_deeper_or_unknown_paths_fall_back_to_app_shell(self):
-        self.assertEqual(self.resolve('property/abc/extra'), 'index.html')
-        self.assertEqual(self.resolve('no-such-page'), 'index.html')
+    def test_deeper_or_unknown_paths_get_the_not_found_page(self):
+        # Previously these got the HOME page (index.html) with HTTP 200
+        self.assertEqual(self.resolve('property/abc/extra'), '404.html')
+        self.assertEqual(self.resolve('no-such-page'), '404.html')
+        for crawler_file in ('robots.txt', 'sitemap.xml', 'ads.txt', 'favicon.ico'):
+            self.assertEqual(self.resolve(crawler_file), '404.html', crawler_file)
 
     def test_path_traversal_is_never_served(self):
-        self.assertEqual(self.resolve('../secret'), 'index.html')
-        self.assertEqual(self.resolve('property/../../secret'), 'index.html')
+        self.assertEqual(self.resolve('../secret'), '404.html')
+        self.assertEqual(self.resolve('property/../../secret'), '404.html')
 
     def test_unbuilt_frontend_returns_none(self):
         with tempfile.TemporaryDirectory() as empty:

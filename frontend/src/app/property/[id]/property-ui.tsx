@@ -5,7 +5,7 @@
 
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -13,6 +13,7 @@ import { useAuth } from '@/stores/auth'
 import { api } from '@/lib/api'
 import { useDynamicRouteId } from '@/lib/useDynamicRouteId'
 import { whatsappLink } from '@/lib/whatsapp'
+import { nightsBetween, trackEvent } from '@/lib/analytics'
 import type { Property, BookingPrice } from '@/types'
 import {
   Star,
@@ -43,6 +44,8 @@ export function PropertyContent() {
   const [availability, setAvailability] = useState<{ available: boolean; available_count: number } | null>(null)
   const [checkingAvailability, setCheckingAvailability] = useState(false)
   const [bookingError, setBookingError] = useState<string | null>(null)
+  // Count/track a property view once per loaded property (not on re-renders)
+  const trackedViewFor = useRef<string | null>(null)
 
   const selectedRoom = property?.room_types?.find(rt => rt.id === selectedRoomTypeId) || null
   // Entry Villa (whole property): booked as one unit, shown as "Entire Villa"
@@ -57,6 +60,14 @@ export function PropertyContent() {
         setLoading(true)
         const data = await api.getProperty(propertyId as string)
         setProperty(data)
+        if (data.status === 'approved' && trackedViewFor.current !== data.id) {
+          trackedViewFor.current = data.id
+          // Same title the server puts in the HTML for this listing (config/seo.py)
+          document.title = `${data.name}${data.city ? ` - ${data.city}` : ''} | SL Booking`
+          trackEvent('property_view', { property_id: data.id, property_type: data.property_type?.name, city: data.city })
+          // Server-side view counter: one per visitor per day; owner/admin views are ignored by the backend
+          api.recordPropertyView(data.id)
+        }
         // Auto-select only when there's exactly one room type - otherwise
         // the guest must explicitly choose (never silently default to [0]
         // when there's more than one option). An Entry Villa always uses its
@@ -149,6 +160,9 @@ export function PropertyContent() {
       return
     }
 
+    const analyticsParams = { property_id: property?.id, nights: nightsBetween(checkIn, checkOut) }
+    trackEvent('booking_start', analyticsParams)
+
     try {
       setBookingLoading(true)
       const booking = await api.createBooking({
@@ -158,6 +172,8 @@ export function PropertyContent() {
         num_adults: guests,
         num_children: 0,
       })
+      // Booking created (HTTP 201) - no reference, price or guest data is sent
+      trackEvent('booking_created', analyticsParams)
       // /booking/{id} has no page in this static export - send the guest to
       // My Bookings, which confirms the new booking (payment + WhatsApp owner).
       window.location.href = booking?.booking_reference
@@ -224,7 +240,7 @@ export function PropertyContent() {
               {currentPhoto ? (
                 <Image
                   src={currentPhoto.url}
-                  alt={property.name}
+                  alt={currentPhoto.caption || property.name}
                   fill
                   className="object-cover"
                   sizes="(max-width: 768px) 100vw, 66vw"
@@ -264,7 +280,7 @@ export function PropertyContent() {
                   >
                     <Image
                       src={photo.url}
-                      alt={`Photo ${idx + 1}`}
+                      alt={photo.caption || `${property.name} - photo ${idx + 1} of ${photos.length}`}
                       fill
                       className="object-cover"
                     />
@@ -354,7 +370,7 @@ export function PropertyContent() {
                       <div className="flex flex-col sm:flex-row gap-4">
                         {roomPhoto && (
                           <div className="relative h-32 w-full sm:w-48 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100">
-                            <Image src={roomPhoto.cloudinary_url || (roomPhoto as any).url} alt={room.name} fill className="object-cover" />
+                            <Image src={roomPhoto.cloudinary_url || (roomPhoto as any).url} alt={`${room.name} - ${property.name}`} fill className="object-cover" />
                           </div>
                         )}
                         <div className="flex-1">

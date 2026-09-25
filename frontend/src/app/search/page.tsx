@@ -9,6 +9,7 @@ import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { PropertyCard } from '@/components/PropertyCard'
 import { api } from '@/lib/api'
+import { trackEvent } from '@/lib/analytics'
 import type { Property, SearchFilters } from '@/types'
 import { Filter, ChevronDown, MapPin, Calendar, Users } from 'lucide-react'
 
@@ -25,6 +26,17 @@ function SearchContent() {
   const checkIn = searchParams.get('check_in') || ''
   const checkOut = searchParams.get('check_out') || ''
   const guests = parseInt(searchParams.get('guests') || '2', 10)
+  const propertyType = searchParams.get('property_type') || ''
+
+  // One analytics event per distinct search (not on sort/price-slider changes).
+  // Dates are not sent; only destination, property type and guest count.
+  useEffect(() => {
+    trackEvent('property_search', {
+      destination: destination || undefined,
+      property_type: propertyType || undefined,
+      guest_count: Number.isFinite(guests) ? guests : undefined,
+    })
+  }, [destination, propertyType, guests])
 
   useEffect(() => {
     async function loadProperties() {

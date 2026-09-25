@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
+import { trackEvent } from '@/lib/analytics'
 import VillaDetailsSection from './VillaDetailsSection'
 
 interface Photo {
@@ -144,6 +145,7 @@ export default function PropertyManagementClient({ propertyId }: { propertyId: s
     try {
       // Backend is authoritative: it re-validates photos, rooms, pricing and availability.
       const updated = await api.submitPropertyForApproval(propertyId)
+      trackEvent('owner_property_submitted', { property_id: propertyId })
       setProperty(updated)
       setSubmitSuccess('Property submitted for approval. An admin will review it shortly.')
     } catch (err: any) {

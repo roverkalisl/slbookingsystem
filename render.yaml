@@ -60,5 +60,19 @@ services:
       - key: NEXT_PUBLIC_API_URL
         value: "https://slbookingsystem.onrender.com/api"
 
+      # Where Stripe returns guests after payment - keep on a domain that is
+      # already serving the app (switch to https://slbooking.hotel.lk only
+      # once that domain points at this service).
       - key: NEXT_PUBLIC_SITE_URL
         value: "https://slbookingsystem.onrender.com"
+
+      # Canonical public domain for SEO only: robots.txt, sitemap.xml,
+      # canonical and Open Graph URLs.
+      - key: CANONICAL_SITE_URL
+        value: "https://slbooking.hotel.lk"
+
+      # Google Analytics 4 measurement id (G-XXXXXXXXXX), read at BUILD time.
+      # Left unset: analytics stays off. Enter the real id in the Render
+      # dashboard - never commit it here.
+      - key: NEXT_PUBLIC_GA_MEASUREMENT_ID
+        sync: false

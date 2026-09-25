@@ -265,6 +265,19 @@ class ApiClient {
     return this.normalizeProperty(response.data.data || response.data)
   }
 
+  /**
+   * Count a public view of an approved property (server-side, one per visitor
+   * per day; the backend ignores the owner and admins). Never throws - view
+   * counting must not affect the page.
+   */
+  async recordPropertyView(id: string): Promise<void> {
+    try {
+      await this.client.post(`/properties/${id}/view/`)
+    } catch {
+      // ignore - analytics only
+    }
+  }
+
   async getProperty(id: string): Promise<Property> {
     const response = await this.client.get<any>(`/properties/${id}/`)
     return this.normalizeProperty(response.data.data || response.data)

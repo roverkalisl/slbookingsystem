@@ -5,6 +5,7 @@
 import type { Metadata } from 'next'
 import { Navbar } from '@/components/Navbar'
 import { AuthInitializer } from '@/components/AuthInitializer'
+import { GoogleAnalytics } from '@/components/GoogleAnalytics'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -22,6 +23,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="bg-gray-50">
+        {/* GA4 - renders nothing unless NEXT_PUBLIC_GA_MEASUREMENT_ID is set */}
+        <GoogleAnalytics />
         <AuthInitializer />
         <Navbar />
         <main className="min-h-screen">
