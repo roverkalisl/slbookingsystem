@@ -13,6 +13,11 @@ export const metadata: Metadata = {
   description: 'Book accommodations across Sri Lanka - Villas, Apartments, Resorts',
   keywords: ['accommodation', 'booking', 'Sri Lanka', 'hotels', 'villas', 'apartments'],
   authors: [{ name: 'SL Booking' }],
+  // Google Search Console ownership (https://slbooking.hotel.lk/) - renders
+  // <meta name="google-site-verification" content="..."> in every page <head>
+  verification: {
+    google: 'NcV_FHp_ZSu_JRVERF8FNny1CMceMW5TVW7xmqQaTHI',
+  },
 }
 
 export default function RootLayout({
