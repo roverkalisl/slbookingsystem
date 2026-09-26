@@ -189,7 +189,8 @@ class PropertyPageSeoTestCase(TestCase):
         self.assertEqual(head_of(html).meta['description'], 'Pool & garden "view"')
 
     def test_unknown_paths_get_404_not_the_home_page(self):
-        for path in ('ads.txt', 'no-such-page', 'property/abc/extra'):
+        # (/ads.txt is now its own Django route - see config/tests_adsense.py)
+        for path in ('no-such-file.txt', 'no-such-page', 'property/abc/extra'):
             response = self.serve(path)
             self.assertEqual(response.status_code, 404, path)
             self.assertEqual(response.content.decode(), 'not found page')

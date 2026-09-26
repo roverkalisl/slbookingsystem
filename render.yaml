@@ -76,3 +76,10 @@ services:
       # dashboard - never commit it here.
       - key: NEXT_PUBLIC_GA_MEASUREMENT_ID
         sync: false
+
+      # Google AdSense publisher id (public - it appears in every page).
+      # Read at BUILD time by Next.js: loads the Auto Ads script on public
+      # pages only. Remove/empty to disable the ads script. /ads.txt is served
+      # from frontend/public/ads.txt.
+      - key: NEXT_PUBLIC_ADSENSE_PUBLISHER_ID
+        value: "pub-7289676285085159"

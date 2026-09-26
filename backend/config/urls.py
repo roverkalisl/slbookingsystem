@@ -16,6 +16,7 @@ from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from apps.core.views import health_check
+from config.adsense import ads_txt
 from config.seo import approved_property_for_path, inject_property_seo, robots_txt, sitemap_xml
 
 urlpatterns = [
@@ -26,6 +27,7 @@ urlpatterns = [
     # Crawler files - must be matched before the frontend catch-all below
     path('robots.txt', robots_txt, name='robots-txt'),
     path('sitemap.xml', sitemap_xml, name='sitemap-xml'),
+    path('ads.txt', ads_txt, name='ads-txt'),
 
     # Django admin is moved off the /admin path to avoid shadowing the frontend
     # admin dashboard route. Frontend admin pages live under /admin/*.
