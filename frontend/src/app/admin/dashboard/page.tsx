@@ -4,9 +4,10 @@
 
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import { loadDashboardStats, type DashboardStats } from '@/lib/adminDashboard'
 import type { Property } from '@/types'
 import {
   Users,
@@ -21,73 +22,42 @@ import {
   Eye,
 } from 'lucide-react'
 
-interface DashboardStats {
-  totalUsers: number
-  totalOwners: number
-  totalProperties: number
-  pendingProperties: number
-  approvedProperties: number
-  totalBookings: number
-  activeBookings: number
-  platformRevenue: number
-  averageRating: number
-  totalPropertyViews: number
-  propertyViewsToday: number
-  propertyViewsThisMonth: number
-  mostViewedProperties: MostViewedProperty[]
-}
-
-/** GET /api/admin/stats/dashboard/ most_viewed_properties (approved properties only) */
-interface MostViewedProperty {
-  id: string
-  name: string
-  city: string
-  view_count: number
-}
-
 export default function AdminDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
+  // A failed stats request is shown as an error - never as zero statistics
+  const [statsError, setStatsError] = useState<string | null>(null)
   const [properties, setProperties] = useState<Property[]>([])
+  const [pendingError, setPendingError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    async function loadDashboard() {
-      try {
-        setLoading(true)
+  const loadDashboard = useCallback(async () => {
+    setLoading(true)
+    setStatsError(null)
+    setPendingError(null)
 
-        // Load dashboard stats from real admin API
-        const dashStats = await api.getAdminDashboardStats()
-
-        // Load pending properties for display (admin endpoint - the guest
-        // search endpoint only returns approved properties)
-        const pendingProps = await api.getAdminProperties('pending_approval')
-        setProperties(pendingProps)
-
-        // Set all stats from API
-        setStats({
-          totalUsers: dashStats.total_users || 0,
-          totalOwners: dashStats.total_owners || 0,
-          totalProperties: dashStats.total_properties || 0,
-          pendingProperties: dashStats.pending_properties || 0,
-          approvedProperties: dashStats.approved_properties || 0,
-          totalBookings: dashStats.total_bookings || 0,
-          activeBookings: dashStats.confirmed_bookings || 0,
-          platformRevenue: dashStats.platform_revenue || 0,
-          averageRating: Number(dashStats.average_rating || 0),
-          totalPropertyViews: dashStats.total_property_views || 0,
-          propertyViewsToday: dashStats.property_views_today || 0,
-          propertyViewsThisMonth: dashStats.property_views_this_month || 0,
-          mostViewedProperties: dashStats.most_viewed_properties || [],
-        })
-      } catch (error) {
-        console.error('Failed to load admin dashboard:', error)
-      } finally {
-        setLoading(false)
-      }
+    // Statistics and the pending list load independently: one failing must
+    // not blank (or zero) the other.
+    const [statsResult] = await Promise.all([
+      loadDashboardStats(() => api.getAdminDashboardStats()),
+      api.getAdminProperties('pending_approval')
+        .then((pendingProps) => setProperties(pendingProps))
+        .catch((error) => {
+          console.error('Failed to load pending properties:', error)
+          setProperties([])
+          setPendingError('Pending properties could not be loaded.')
+        }),
+    ])
+    setStats(statsResult.stats)
+    if (statsResult.error) {
+      console.error('Failed to load admin dashboard statistics:', statsResult.error)
+      setStatsError(statsResult.error)
     }
-
-    loadDashboard()
+    setLoading(false)
   }, [])
+
+  useEffect(() => {
+    loadDashboard()
+  }, [loadDashboard])
 
   const StatCard = ({
     icon: Icon,
@@ -132,83 +102,107 @@ export default function AdminDashboard() {
         <p className="text-gray-600 mt-2">Platform overview and key metrics</p>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <StatCard
-          icon={<Users className="w-6 h-6" style={{ color: '#3B82F6' }} />}
-          label="Total Users"
-          value={stats?.totalUsers || 0}
-          color="#3B82F6"
-        />
-        <StatCard
-          icon={<Building2 className="w-6 h-6" style={{ color: '#10B981' }} />}
-          label="Total Properties"
-          value={stats?.totalProperties || 0}
-          color="#10B981"
-        />
-        <StatCard
-          icon={<Clock className="w-6 h-6" style={{ color: '#F59E0B' }} />}
-          label="Pending Review"
-          value={stats?.pendingProperties || 0}
-          color="#F59E0B"
-        />
-        <StatCard
-          icon={<CheckCircle2 className="w-6 h-6" style={{ color: '#8B5CF6' }} />}
-          label="Active Properties"
-          value={stats?.approvedProperties || 0}
-          color="#8B5CF6"
-        />
-      </div>
+      {/* Statistics failed to load: say so - never show zeros as if the platform were empty */}
+      {statsError && (
+        <div role="alert" className="mb-8 rounded-lg border border-red-200 bg-red-50 p-6 text-red-800">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-6 h-6 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="font-semibold">Platform statistics are unavailable</p>
+              <p className="text-sm mt-1">{statsError}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => loadDashboard()}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
 
-      {/* Secondary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <StatCard
-          icon={<BookOpen className="w-6 h-6" style={{ color: '#EC4899' }} />}
-          label="Total Bookings"
-          value={stats?.totalBookings || 0}
-          color="#EC4899"
-        />
-        <StatCard
-          icon={<Activity className="w-6 h-6" style={{ color: '#14B8A6' }} />}
-          label="Active Bookings"
-          value={stats?.activeBookings || 0}
-          color="#14B8A6"
-        />
-        <StatCard
-          icon={<DollarSign className="w-6 h-6" style={{ color: '#06B6D4' }} />}
-          label="Platform Revenue"
-          value={`LKR ${(stats?.platformRevenue || 0).toLocaleString()}`}
-          color="#06B6D4"
-        />
-        <StatCard
-          icon={<TrendingUp className="w-6 h-6" style={{ color: '#F97316' }} />}
-          label="Avg Rating"
-          value={`${(stats?.averageRating || 0).toFixed(1)}★`}
-          color="#F97316"
-        />
-      </div>
+      {stats && (
+        <>
+          {/* Stats Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <StatCard
+              icon={<Users className="w-6 h-6" style={{ color: '#3B82F6' }} />}
+              label="Total Users"
+              value={stats.totalUsers}
+              color="#3B82F6"
+            />
+            <StatCard
+              icon={<Building2 className="w-6 h-6" style={{ color: '#10B981' }} />}
+              label="Total Properties"
+              value={stats.totalProperties}
+              color="#10B981"
+            />
+            <StatCard
+              icon={<Clock className="w-6 h-6" style={{ color: '#F59E0B' }} />}
+              label="Pending Review"
+              value={stats.pendingProperties}
+              color="#F59E0B"
+            />
+            <StatCard
+              icon={<CheckCircle2 className="w-6 h-6" style={{ color: '#8B5CF6' }} />}
+              label="Active Properties"
+              value={stats.approvedProperties}
+              color="#8B5CF6"
+            />
+          </div>
 
-      {/* Property page views (one per visitor per day; owner/admin views not counted) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <StatCard
-          icon={<Eye className="w-6 h-6" style={{ color: '#6366F1' }} />}
-          label="Total Property Views"
-          value={(stats?.totalPropertyViews || 0).toLocaleString()}
-          color="#6366F1"
-        />
-        <StatCard
-          icon={<Eye className="w-6 h-6" style={{ color: '#0EA5E9' }} />}
-          label="Views Today"
-          value={(stats?.propertyViewsToday || 0).toLocaleString()}
-          color="#0EA5E9"
-        />
-        <StatCard
-          icon={<Eye className="w-6 h-6" style={{ color: '#84CC16' }} />}
-          label="Views This Month"
-          value={(stats?.propertyViewsThisMonth || 0).toLocaleString()}
-          color="#84CC16"
-        />
-      </div>
+          {/* Secondary Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <StatCard
+              icon={<BookOpen className="w-6 h-6" style={{ color: '#EC4899' }} />}
+              label="Total Bookings"
+              value={stats.totalBookings}
+              color="#EC4899"
+            />
+            <StatCard
+              icon={<Activity className="w-6 h-6" style={{ color: '#14B8A6' }} />}
+              label="Active Bookings"
+              value={stats.activeBookings}
+              color="#14B8A6"
+            />
+            <StatCard
+              icon={<DollarSign className="w-6 h-6" style={{ color: '#06B6D4' }} />}
+              label="Platform Revenue"
+              value={stats.platformRevenue === null ? 'Not available' : `LKR ${stats.platformRevenue.toLocaleString()}`}
+              color="#06B6D4"
+            />
+            <StatCard
+              icon={<TrendingUp className="w-6 h-6" style={{ color: '#F97316' }} />}
+              label="Avg Rating"
+              value={`${stats.averageRating.toFixed(1)}★`}
+              color="#F97316"
+            />
+          </div>
+
+          {/* Property page views (one per visitor per day; owner/admin views not counted) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <StatCard
+              icon={<Eye className="w-6 h-6" style={{ color: '#6366F1' }} />}
+              label="Total Property Views"
+              value={stats.totalPropertyViews.toLocaleString()}
+              color="#6366F1"
+            />
+            <StatCard
+              icon={<Eye className="w-6 h-6" style={{ color: '#0EA5E9' }} />}
+              label="Views Today"
+              value={stats.propertyViewsToday.toLocaleString()}
+              color="#0EA5E9"
+            />
+            <StatCard
+              icon={<Eye className="w-6 h-6" style={{ color: '#84CC16' }} />}
+              label="Views This Month"
+              value={stats.propertyViewsThisMonth.toLocaleString()}
+              color="#84CC16"
+            />
+          </div>
+        </>
+      )}
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -225,7 +219,12 @@ export default function AdminDashboard() {
               </Link>
             </div>
 
-            {properties.filter(p => p.status === 'pending_approval').length > 0 ? (
+            {pendingError ? (
+              <div role="alert" className="p-6 text-center text-red-700">
+                <AlertCircle className="w-8 h-8 mx-auto mb-2" />
+                <p>{pendingError}</p>
+              </div>
+            ) : properties.filter(p => p.status === 'pending_approval').length > 0 ? (
               <div className="divide-y">
                 {properties
                   .filter(p => p.status === 'pending_approval')
@@ -270,9 +269,13 @@ export default function AdminDashboard() {
             <div className="p-6 border-b border-gray-200">
               <h2 className="text-xl font-bold">Most Viewed Properties</h2>
             </div>
-            {(stats?.mostViewedProperties || []).length > 0 ? (
+            {!stats ? (
+              <div className="p-6 text-center text-gray-500">
+                <p>View statistics are unavailable</p>
+              </div>
+            ) : stats.mostViewedProperties.length > 0 ? (
               <div className="divide-y">
-                {(stats?.mostViewedProperties || []).map((item, index) => (
+                {stats.mostViewedProperties.map((item, index) => (
                   <div key={item.id} className="p-6 hover:bg-gray-50 transition-colors flex items-center justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-gray-900">{index + 1}. {item.name}</h3>
@@ -339,7 +342,8 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Platform Health */}
+          {/* Platform Health (only with real statistics) */}
+          {stats && (
           <div className="bg-white rounded-lg shadow">
             <div className="p-6 border-b border-gray-200">
               <h2 className="text-lg font-bold">Platform Health</h2>
@@ -385,6 +389,7 @@ export default function AdminDashboard() {
               </div>
             </div>
           </div>
+          )}
         </div>
       </div>
     </div>

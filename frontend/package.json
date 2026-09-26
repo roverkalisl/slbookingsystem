@@ -10,6 +10,7 @@
     "lint": "next lint",
     "type-check": "tsc --noEmit",
     "test:analytics": "node --no-warnings --test tests/analytics.test.mjs",
+    "test:unit": "node --no-warnings --test \"tests/*.test.mjs\"",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\""
   },
   "dependencies": {

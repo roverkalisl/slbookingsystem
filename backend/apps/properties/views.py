@@ -161,6 +161,13 @@ class PropertyViewSet(viewsets.ModelViewSet):
             logger.debug(f"[VIEWSET] User unauthenticated, returning approved properties only")
             return Property.objects.filter(status='approved')
 
+        # Admins first (staff / superuser / super_admin role): they see
+        # everything even if the account ALSO holds a guest or owner role -
+        # otherwise such an admin was scoped like a guest/owner.
+        if user.is_admin:
+            logger.debug(f"[VIEWSET] User is admin, returning all properties")
+            return Property.objects.all()
+
         # Guests see approved properties only
         if user.has_role('guest'):
             logger.debug(f"[VIEWSET] User is guest, returning approved properties only")
@@ -181,11 +188,6 @@ class PropertyViewSet(viewsets.ModelViewSet):
             ) | Property.objects.filter(status='approved')
             logger.debug(f"[VIEWSET] User is property_owner, queryset count={queryset.count()}")
             return queryset
-
-        # Super admin sees everything
-        if user.is_staff:
-            logger.debug(f"[VIEWSET] User is staff, returning all properties")
-            return Property.objects.all()
 
         # Default: show only approved properties
         logger.debug(f"[VIEWSET] Default: returning approved properties only")
@@ -851,13 +853,14 @@ class RoomTypeViewSet(viewsets.ModelViewSet):
                 is_active=True
             )
 
+        # Admins first - even when the account also holds the owner role
+        if user.is_admin:
+            return RoomType.objects.all()
+
         if user.has_role('property_owner'):
             return RoomType.objects.filter(
                 property__owner=user
             ) | RoomType.objects.filter(property__status='approved')
-
-        if user.is_staff:
-            return RoomType.objects.all()
 
         return RoomType.objects.filter(
             property__status='approved',
