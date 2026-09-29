@@ -11,13 +11,13 @@ import os
 from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
-from django.http import HttpResponse
+from django.http import FileResponse, HttpResponse, HttpResponsePermanentRedirect
 from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from apps.core.views import health_check
 from config.adsense import ads_txt
-from config.seo import approved_property_for_path, inject_property_seo, robots_txt, sitemap_xml
+from config.seo import approved_property_for_path, inject_property_seo, robots_header_for, robots_txt, sitemap_xml
 
 urlpatterns = [
     # Health check - lightweight, unauthenticated, no DB access.
@@ -92,12 +92,48 @@ def resolve_frontend_html(path, static_root):
     return None
 
 
+# Brand/metadata files from frontend/public that must live at the site root
+# (favicon, icons, default Open Graph image). WhiteNoise only serves /static/,
+# so these are served here - only top-level files with these extensions.
+ROOT_ASSET_TYPES = {
+    '.ico': 'image/x-icon',
+    '.png': 'image/png',
+    '.svg': 'image/svg+xml',
+    '.webmanifest': 'application/manifest+json',
+}
+
+
+def root_asset_response(path):
+    """A top-level public asset (e.g. /favicon.ico) from the deployed build, or None."""
+    name = (path or '').strip('/')
+    extension = os.path.splitext(name)[1].lower()
+    if not name or '/' in name or '\\' in name or extension not in ROOT_ASSET_TYPES:
+        return None
+    root = os.path.realpath(str(settings.STATIC_ROOT))
+    full_path = os.path.realpath(os.path.join(root, name))
+    if not full_path.startswith(root + os.sep) or not os.path.isfile(full_path):
+        return None
+    response = FileResponse(open(full_path, 'rb'), content_type=ROOT_ASSET_TYPES[extension])
+    response['Cache-Control'] = 'public, max-age=86400'
+    return response
+
+
 def serve_frontend(request, path=''):
     """Serve Next.js static export HTML for each route"""
     # Never serve frontend for static files or API routes.
     # The frontend admin dashboard lives under /admin/* and the Django admin is now at /django-admin/.
     if path.startswith('static/') or path in ('api',) or path.startswith('api/') or path.startswith('django-admin/'):
         return HttpResponse('Not found', status=404)
+
+    # One URL per page: /search/ -> /search (query string kept). Exported
+    # pages are served without a trailing slash (Next.js trailingSlash: false).
+    if path.endswith('/') and path.strip('/'):
+        query = request.META.get('QUERY_STRING', '')
+        return HttpResponsePermanentRedirect('/' + path.strip('/') + (f'?{query}' if query else ''))
+
+    asset = root_asset_response(path)
+    if asset is not None:
+        return asset
 
     html_file = resolve_frontend_html(path, settings.STATIC_ROOT)
     if html_file is None:
@@ -108,15 +144,25 @@ def serve_frontend(request, path=''):
     except (FileNotFoundError, IOError):
         return HttpResponse('Frontend not built', status=404)
 
+    # Private pages and filtered search URLs: noindex, follow (also on their 404s)
+    robots = robots_header_for(path, request.META.get('QUERY_STRING', ''))
+
     if html_file.replace(os.sep, '/') == FRONTEND_NOT_FOUND_PAGE:
-        return HttpResponse(html, content_type='text/html', status=404)
+        response = HttpResponse(html, content_type='text/html', status=404)
+        if robots:
+            response['X-Robots-Tag'] = robots
+        return response
 
     # Public property page: property-specific title/description/canonical/OG
     # tags - only for APPROVED properties; anything else gets the generic shell.
     property_obj = approved_property_for_path(path)
     if property_obj is not None:
         html = inject_property_seo(html, property_obj)
-    return HttpResponse(html, content_type='text/html')
+
+    response = HttpResponse(html, content_type='text/html')
+    if robots:
+        response['X-Robots-Tag'] = robots
+    return response
 
 
 # PRODUCTION: Serve Next.js frontend via WhiteNoise

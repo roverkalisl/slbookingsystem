@@ -83,3 +83,7 @@ services:
       # from frontend/public/ads.txt.
       - key: NEXT_PUBLIC_ADSENSE_PUBLISHER_ID
         value: "pub-7289676285085159"
+
+      # Official SL Booking support email shown on /contact (read at BUILD time).
+      - key: NEXT_PUBLIC_SUPPORT_EMAIL
+        value: "roverkalisl@gmail.com"
