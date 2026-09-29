@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import PartnerNetwork from '@/components/PartnerNetwork'
 import type { Property, Booking } from '@/types'
 import {
   Building2,
@@ -304,6 +305,9 @@ export default function OwnerDashboard() {
           )}
         </div>
       </div>
+
+      {/* SL Booking Partner Network */}
+      <PartnerNetwork />
     </div>
   )
 }

@@ -32,6 +32,12 @@ export function whatsappLink(phone: string | null | undefined, message: string):
   return number ? `https://wa.me/${number}?text=${encodeURIComponent(message)}` : null
 }
 
+/** tel: link in international format ('077 960 6117' -> 'tel:+94779606117'), or null when the number is missing/invalid. */
+export function callLink(phone: string | null | undefined): string | null {
+  const number = normalizeWhatsAppNumber(phone)
+  return number ? `tel:+${number}` : null
+}
+
 /** Only ever open links that really point at WhatsApp (e.g. a URL returned by the API). */
 export function safeWhatsAppUrl(url: string | null | undefined): string | null {
   return url && url.startsWith('https://wa.me/') ? url : null
