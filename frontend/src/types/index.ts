@@ -175,7 +175,8 @@ export interface Booking {
   room_type_name?: string
   guest_name?: string
   guest_email?: string
-  guest_phone?: string
+  /** Guest WhatsApp / mobile (+94...) - returned only to the guest, the property owner and admins */
+  guest_phone?: string | null
   check_in_date: string
   check_out_date: string
   number_of_nights: number
@@ -200,6 +201,8 @@ export interface BookingGuest {
   first_name: string
   last_name: string
   email: string
+  /** WhatsApp / mobile, normalised to +<country><number>; empty on older bookings */
+  phone?: string | null
   is_primary_guest: boolean
 }
 

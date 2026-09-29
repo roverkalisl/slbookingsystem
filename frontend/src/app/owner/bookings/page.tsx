@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { Search } from 'lucide-react'
 import { api } from '@/lib/api'
-import { whatsappLink } from '@/lib/whatsapp'
+import { guestWhatsAppLink } from '@/lib/whatsapp'
 import type { Booking } from '@/types'
 
 const STATUS_STYLES: Record<string, string> = {
@@ -107,7 +107,7 @@ export default function OwnerBookings() {
           <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No bookings found.</div>
         ) : (
           filtered.map(b => {
-            const wa = whatsappLink(b.guest_phone, `Hi ${b.guest_name || ''}, regarding your booking ${b.booking_reference} at ${b.property_name || 'our property'}.`)
+            const wa = guestWhatsAppLink(b)
             return (
               <div key={b.id} className="bg-white rounded-lg shadow p-6">
                 <div className="flex flex-wrap items-start justify-between gap-4">
@@ -119,6 +119,7 @@ export default function OwnerBookings() {
                     <p className="text-sm text-gray-600 mt-1">{b.property_name} &middot; {b.room_type_name}</p>
                     <p className="text-sm text-gray-600">{b.check_in_date} &rarr; {b.check_out_date} &middot; {b.number_of_nights} night(s)</p>
                     <p className="text-sm text-gray-600 mt-1">Guest: {b.guest_name} {b.guest_email && <span className="text-gray-400">({b.guest_email})</span>}</p>
+                    {wa && <p className="text-sm text-gray-600">WhatsApp / Mobile: {b.guest_phone}</p>}
                   </div>
                   <div className="text-right">
                     <p className="text-lg font-bold text-gray-900">LKR {Number(b.total_price).toLocaleString()}</p>

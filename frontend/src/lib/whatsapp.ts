@@ -36,3 +36,24 @@ export function whatsappLink(phone: string | null | undefined, message: string):
 export function safeWhatsAppUrl(url: string | null | undefined): string | null {
   return url && url.startsWith('https://wa.me/') ? url : null
 }
+
+/** Owner -> guest prefilled message for a booking (no payment details). */
+export function guestWhatsAppMessage(booking: {
+  guest_name?: string | null
+  property_name?: string | null
+  booking_reference: string
+}): string {
+  const name = (booking.guest_name || '').trim() || 'there'
+  const property = (booking.property_name || '').trim() || 'your host'
+  return `Hello ${name}, this is ${property} regarding your SL Booking reservation ${booking.booking_reference}.`
+}
+
+/** Owner -> guest WhatsApp link for a booking, or null when the guest has no valid number. */
+export function guestWhatsAppLink(booking: {
+  guest_phone?: string | null
+  guest_name?: string | null
+  property_name?: string | null
+  booking_reference: string
+}): string | null {
+  return whatsappLink(booking.guest_phone, guestWhatsAppMessage(booking))
+}

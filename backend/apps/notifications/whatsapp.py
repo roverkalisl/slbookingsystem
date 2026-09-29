@@ -52,6 +52,15 @@ def normalize_whatsapp_number(raw: Optional[str], default_country_code: str = DE
     return digits
 
 
+def normalize_phone_e164(raw: Optional[str], default_country_code: str = DEFAULT_COUNTRY_CODE) -> Optional[str]:
+    """
+    The same number in stored E.164 form with a leading '+' (e.g. '0771234567'
+    -> '+94771234567'); None when it is not a plausible phone number.
+    """
+    digits = normalize_whatsapp_number(raw, default_country_code)
+    return f'+{digits}' if digits else None
+
+
 def whatsapp_url(number: Optional[str], message: str = '') -> Optional[str]:
     """wa.me link for an already-normalised number, with a URL-encoded prefilled message."""
     if not number:

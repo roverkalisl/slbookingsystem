@@ -190,7 +190,7 @@ class CoreWorkflowEndToEndTestCase(APITestCase):
         # --- 10. Guest price + availability + booking (2 rooms, 2 weekday nights) ---
         guest = self.as_user(self.guest)
         payload = {
-            'room_type_id': str(room.id), 'check_in_date': str(check_in), 'check_out_date': str(check_out),
+            'guest_phone': '0771234567', 'room_type_id': str(room.id), 'check_in_date': str(check_in), 'check_out_date': str(check_out),
             'number_of_adults': 8, 'number_of_rooms': 2,
         }
         quote = guest.post('/api/bookings/calculate-price/', payload, format='json')

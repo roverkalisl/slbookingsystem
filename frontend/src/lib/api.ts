@@ -504,6 +504,7 @@ class ApiClient {
     num_adults: number
     num_children: number
     special_requests?: string
+    guest_phone: string
   }): Promise<Booking> {
     const response = await this.client.post<any>('/bookings/', {
       room_type_id: data.room_type_id,
@@ -512,6 +513,7 @@ class ApiClient {
       number_of_adults: data.num_adults,
       number_of_children: data.num_children,
       special_requests: data.special_requests,
+      guest_phone: data.guest_phone,
     })
     return response.data.data || response.data
   }

@@ -117,7 +117,7 @@ class OwnerCalendarTestCase(APITestCase):
         self.client.force_authenticate(self.guest)
         response = self.client.post('/api/bookings/', {
             'room_type_id': str(self.room_type.id),
-            'check_in_date': self.check_in.isoformat(),
+            'guest_phone': '0771234567', 'check_in_date': self.check_in.isoformat(),
             'check_out_date': self.check_out.isoformat(),
             'number_of_adults': 2,
         }, format='json')

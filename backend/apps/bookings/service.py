@@ -93,7 +93,8 @@ class BookingService:
         guest_details: List[Dict] = None,
         special_requests: str = None,
         discount_percent: Decimal = Decimal('0'),
-        discount_fixed: Decimal = Decimal('0')
+        discount_fixed: Decimal = Decimal('0'),
+        guest_phone: str = None,
     ) -> Booking:
         """
         Create a booking with DOUBLE-BOOKING PREVENTION.
@@ -110,6 +111,9 @@ class BookingService:
             num_children: Number of children
             num_rooms: Number of rooms to book
             guest_details: List of guest info dicts [{first_name, last_name, email, phone}]
+            guest_phone: The primary guest's WhatsApp / mobile number, already
+                validated and normalised to +<country><number> by the API
+                (stored on the primary BookingGuest; optional for direct calls)
             special_requests: Special requests from guest
             discount_percent: Discount percentage to apply (system-controlled only -
                 never pass client/guest input; the booking API passes none)
@@ -254,13 +258,16 @@ class BookingService:
             guest_objects = []
             for idx, guest_info in enumerate(guest_details):
                 is_primary = idx == 0 or guest_info.get('is_primary_guest', False)
+                phone = guest_info.get('phone', '') or ''
+                if is_primary and guest_phone and not phone:
+                    phone = guest_phone
                 guest_objects.append(
                     BookingGuest(
                         booking=booking,
                         first_name=guest_info.get('first_name', ''),
                         last_name=guest_info.get('last_name', ''),
                         email=guest_info.get('email', ''),
-                        phone=guest_info.get('phone', ''),
+                        phone=phone,
                         is_primary_guest=is_primary
                     )
                 )
@@ -272,7 +279,7 @@ class BookingService:
                 first_name=guest.first_name or 'Guest',
                 last_name=guest.last_name or '',
                 email=guest.email,
-                phone='',
+                phone=guest_phone or '',
                 is_primary_guest=True
             )
 

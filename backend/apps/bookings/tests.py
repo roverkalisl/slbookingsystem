@@ -536,7 +536,7 @@ class OwnerBookingManagementTestCase(TransactionTestCase):
         client.force_authenticate(user=self.guest)
         response = client.post('/api/bookings/', {
             'room_type_id': str(self.room_type.id),
-            'check_in_date': str(self.check_in + timedelta(days=20)),
+            'guest_phone': '0771234567', 'check_in_date': str(self.check_in + timedelta(days=20)),
             'check_out_date': str(self.check_in + timedelta(days=22)),
             'number_of_adults': 2,
             'number_of_children': 0,
@@ -691,7 +691,7 @@ class AvailabilityValidationTestCase(TransactionTestCase):
         # First booking succeeds and takes the only room
         first = client.post('/api/bookings/', {
             'room_type_id': str(self.room_type.id),
-            'check_in_date': str(self.check_in),
+            'guest_phone': '0771234567', 'check_in_date': str(self.check_in),
             'check_out_date': str(self.check_out),
             'number_of_adults': 2,
         }, format='json')
@@ -700,7 +700,7 @@ class AvailabilityValidationTestCase(TransactionTestCase):
         # Second overlapping booking must be rejected with 409 + detail
         second = client.post('/api/bookings/', {
             'room_type_id': str(self.room_type.id),
-            'check_in_date': str(self.check_in),
+            'guest_phone': '0771234567', 'check_in_date': str(self.check_in),
             'check_out_date': str(self.check_out),
             'number_of_adults': 1,
         }, format='json')
@@ -829,7 +829,7 @@ class MultiRoomInventoryTestCase(TestCase):
         client.force_authenticate(user=self.guest1)
         payload = {
             'room_type_id': str(self.room_type.id),
-            'check_in_date': str(self.check_in),
+            'guest_phone': '0771234567', 'check_in_date': str(self.check_in),
             'check_out_date': str(self.check_out),
             'number_of_adults': 1,
         }
@@ -936,7 +936,7 @@ class MultiRoomPricingTestCase(MultiRoomTestMixin, TestCase):
         client.force_authenticate(user=self.guest)
         payload = {
             'room_type_id': str(self.room_type.id),
-            'check_in_date': str(self.monday),
+            'guest_phone': '0771234567', 'check_in_date': str(self.monday),
             'check_out_date': str(self.monday + timedelta(days=2)),
             'number_of_adults': 3,
             'number_of_rooms': 2,
@@ -959,7 +959,7 @@ class MultiRoomPricingTestCase(MultiRoomTestMixin, TestCase):
         client.force_authenticate(user=self.guest)
         response = client.post('/api/bookings/check-availability/', {
             'room_type_id': str(self.room_type.id),
-            'check_in_date': str(self.monday),
+            'guest_phone': '0771234567', 'check_in_date': str(self.monday),
             'check_out_date': str(self.monday + timedelta(days=2)),
         }, format='json')
         self.assertEqual(response.status_code, 200, response.data)
@@ -1011,7 +1011,7 @@ class MultiRoomCapacityTestCase(MultiRoomTestMixin, TestCase):
         client.force_authenticate(user=self.guest)
         response = client.post('/api/bookings/', {
             'room_type_id': str(self.room_type.id),
-            'check_in_date': str(self.check_in),
+            'guest_phone': '0771234567', 'check_in_date': str(self.check_in),
             'check_out_date': str(self.check_in + timedelta(days=1)),
             'number_of_adults': 4,
             'number_of_rooms': 2,
@@ -1023,7 +1023,7 @@ class MultiRoomCapacityTestCase(MultiRoomTestMixin, TestCase):
         client.force_authenticate(user=self.guest)
         response = client.post('/api/bookings/', {
             'room_type_id': str(self.room_type.id),
-            'check_in_date': str(self.check_in),
+            'guest_phone': '0771234567', 'check_in_date': str(self.check_in),
             'check_out_date': str(self.check_in + timedelta(days=1)),
             'number_of_adults': 4,
             'number_of_rooms': 1,
@@ -1112,7 +1112,7 @@ class BookingPriceIntegrityTestCase(MultiRoomTestMixin, TestCase):
     def post_booking(self, nights=2, **extra):
         payload = {
             'room_type_id': str(self.room_type.id),
-            'check_in_date': str(self.monday),
+            'guest_phone': '0771234567', 'check_in_date': str(self.monday),
             'check_out_date': str(self.monday + timedelta(days=nights)),
             'number_of_adults': 1,
         }
@@ -1168,7 +1168,7 @@ class BookingPriceIntegrityTestCase(MultiRoomTestMixin, TestCase):
     def test_quote_endpoint_ignores_guest_discount(self):
         response = self.client.post('/api/bookings/calculate-price/', {
             'room_type_id': str(self.room_type.id),
-            'check_in_date': str(self.monday),
+            'guest_phone': '0771234567', 'check_in_date': str(self.monday),
             'check_out_date': str(self.monday + timedelta(days=2)),
             'number_of_adults': 1,
             'discount_percent': '100',

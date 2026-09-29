@@ -340,6 +340,7 @@ export default function BookingsPage() {
                             {guest.is_primary_guest && <span className="text-xs text-gray-600"> (Primary)</span>}
                           </p>
                           <p className="text-gray-600">{guest.email}</p>
+                          {guest.phone && <p className="text-gray-600">{guest.phone}</p>}
                         </div>
                       ))}
                     </div>
@@ -347,6 +348,11 @@ export default function BookingsPage() {
                     <p className="text-sm text-gray-600">
                       {booking.number_of_adults} adult(s)
                       {booking.number_of_children > 0 && `, ${booking.number_of_children} child(ren)`}
+                    </p>
+                  )}
+                  {booking.guest_phone && !booking.guests?.length && (
+                    <p className="mt-2 text-sm text-gray-600">
+                      WhatsApp / Mobile: <span className="font-medium text-gray-900">{booking.guest_phone}</span>
                     </p>
                   )}
                 </div>

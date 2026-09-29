@@ -12,7 +12,7 @@ import Link from 'next/link'
 import { useAuth } from '@/stores/auth'
 import { api } from '@/lib/api'
 import { useDynamicRouteId } from '@/lib/useDynamicRouteId'
-import { whatsappLink } from '@/lib/whatsapp'
+import { normalizeWhatsAppNumber, whatsappLink } from '@/lib/whatsapp'
 import { nightsBetween, trackEvent } from '@/lib/analytics'
 import type { Property, BookingPrice } from '@/types'
 import {
@@ -29,7 +29,7 @@ export function PropertyContent() {
   const params = useParams()
   // Real id from the URL - useParams() returns the static-export placeholder '0'
   const propertyId = useDynamicRouteId(params.id as string)
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, user } = useAuth()
 
   const [property, setProperty] = useState<Property | null>(null)
   const [loading, setLoading] = useState(true)
@@ -44,6 +44,9 @@ export function PropertyContent() {
   const [availability, setAvailability] = useState<{ available: boolean; available_count: number } | null>(null)
   const [checkingAvailability, setCheckingAvailability] = useState(false)
   const [bookingError, setBookingError] = useState<string | null>(null)
+  // Guest WhatsApp / mobile for this booking (shared only with the property owner)
+  const [guestPhone, setGuestPhone] = useState('')
+  const [guestPhoneTouched, setGuestPhoneTouched] = useState(false)
   // Count/track a property view once per loaded property (not on re-renders)
   const trackedViewFor = useRef<string | null>(null)
 
@@ -142,6 +145,13 @@ export function PropertyContent() {
     return () => clearTimeout(timer)
   }, [checkIn, checkOut, selectedRoomTypeId])
 
+  // Prefill the booking contact number from the guest's profile once, if it has one
+  useEffect(() => {
+    if (!guestPhoneTouched && !guestPhone && user?.phone) setGuestPhone(user.phone)
+  }, [user?.phone, guestPhone, guestPhoneTouched])
+
+  const guestPhoneValid = normalizeWhatsAppNumber(guestPhone) !== null
+
   const handleBooking = async () => {
     if (!isAuthenticated) {
       window.location.href = '/login'
@@ -160,6 +170,12 @@ export function PropertyContent() {
       return
     }
 
+    if (!guestPhoneValid) {
+      setGuestPhoneTouched(true)
+      setBookingError('Please enter a valid WhatsApp / mobile number, e.g. 0771234567 or +94771234567.')
+      return
+    }
+
     const analyticsParams = { property_id: property?.id, nights: nightsBetween(checkIn, checkOut) }
     trackEvent('booking_start', analyticsParams)
 
@@ -171,6 +187,7 @@ export function PropertyContent() {
         check_out: checkOut,
         num_adults: guests,
         num_children: 0,
+        guest_phone: guestPhone.trim(),
       })
       // Booking created (HTTP 201) - no reference, price or guest data is sent
       trackEvent('booking_created', analyticsParams)
@@ -187,7 +204,8 @@ export function PropertyContent() {
         setBookingError(error.response.data?.detail || error.response.data?.error || 'The selected room is no longer available for these dates.')
       } else if (error.response?.data) {
         const data = error.response.data
-        setBookingError(typeof data === 'string' ? data : (data.detail || data.error || 'Failed to create booking. Please try again.'))
+        const phoneError = Array.isArray(data?.guest_phone) ? data.guest_phone[0] : data?.guest_phone
+        setBookingError(typeof data === 'string' ? data : (phoneError || data.detail || data.error || 'Failed to create booking. Please try again.'))
       } else {
         setBookingError('Failed to create booking. Please try again.')
       }
@@ -535,6 +553,30 @@ export function PropertyContent() {
                   onChange={(e) => setGuests(parseInt(e.target.value) || 1)}
                   className="w-full border border-gray-300 rounded px-3 py-2"
                 />
+              </div>
+
+              <div>
+                <label htmlFor="guest-phone" className="block text-sm font-semibold mb-2">
+                  WhatsApp / Mobile Number <span className="text-red-600">*</span>
+                </label>
+                <input
+                  id="guest-phone"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  required
+                  maxLength={30}
+                  placeholder="e.g. 0771234567 or +94771234567"
+                  value={guestPhone}
+                  onChange={(e) => { setGuestPhone(e.target.value); setGuestPhoneTouched(true) }}
+                  aria-invalid={guestPhoneTouched && !guestPhoneValid}
+                  className={`w-full border rounded px-3 py-2 ${guestPhoneTouched && guestPhone && !guestPhoneValid ? 'border-red-400' : 'border-gray-300'}`}
+                />
+                {guestPhoneTouched && guestPhone && !guestPhoneValid ? (
+                  <p className="mt-1 text-xs text-red-700">Enter a valid number, e.g. 0771234567 or +94771234567.</p>
+                ) : (
+                  <p className="mt-1 text-xs text-gray-500">Shared only with the property so they can contact you about this booking.</p>
+                )}
               </div>
             </div>
 

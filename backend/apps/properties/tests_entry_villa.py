@@ -270,7 +270,7 @@ class VillaBookingTestCase(EntryVillaTestBase):
         self.check_out = self.check_in + timedelta(days=2)
 
     def payload(self, **extra):
-        return {'room_type_id': str(self.unit.id), 'check_in_date': str(self.check_in),
+        return {'guest_phone': '0771234567', 'room_type_id': str(self.unit.id), 'check_in_date': str(self.check_in),
                 'check_out_date': str(self.check_out), 'number_of_adults': 2, **extra}
 
     def test_guest_detail_is_the_whole_villa(self):

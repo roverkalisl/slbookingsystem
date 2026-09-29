@@ -129,7 +129,8 @@ class BookingViewSet(viewsets.ModelViewSet):
                     "is_primary_guest": true
                 }
             ],
-            "special_requests": "Late check-in"
+            "special_requests": "Late check-in",
+            "guest_phone": "0771234567"      (required; stored as +94771234567)
         }
 
         The price is always calculated server-side; client-supplied discounts
@@ -153,6 +154,7 @@ class BookingViewSet(viewsets.ModelViewSet):
                 num_rooms=serializer.validated_data['number_of_rooms'],
                 guest_details=serializer.validated_data.get('guests'),
                 special_requests=serializer.validated_data.get('special_requests', ''),
+                guest_phone=serializer.validated_data['guest_phone'],
                 # No discount args: guests must never choose their own discount.
             )
 

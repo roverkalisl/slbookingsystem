@@ -7,8 +7,18 @@ from datetime import date
 from decimal import Decimal
 
 from .models import Booking, BookingGuest, Availability
-from apps.notifications.whatsapp import booking_owner_whatsapp
+from apps.notifications.whatsapp import booking_owner_whatsapp, normalize_phone_e164
 from apps.properties.models import RoomType, Property
+
+GUEST_PHONE_ERROR = 'Enter a valid WhatsApp / mobile number, e.g. +94771234567 or 0771234567.'
+
+
+def validated_guest_phone(value) -> str:
+    """A guest phone number normalised to +<country><number>, or a validation error."""
+    phone = normalize_phone_e164(value)
+    if not phone:
+        raise serializers.ValidationError(GUEST_PHONE_ERROR)
+    return phone
 
 
 def owner_whatsapp_for(serializer, booking) -> dict:
@@ -36,6 +46,12 @@ class BookingGuestSerializer(serializers.ModelSerializer):
         model = BookingGuest
         fields = ['id', 'first_name', 'last_name', 'email', 'phone', 'is_primary_guest']
         read_only_fields = ['id']
+
+    def validate_phone(self, value):
+        """Optional here, but never stored malformed: normalised to +<country><number>."""
+        if not value:
+            return ''
+        return validated_guest_phone(value)
 
 
 class AvailabilitySerializer(serializers.ModelSerializer):
@@ -158,6 +174,17 @@ class BookingCreateSerializer(serializers.Serializer):
     number_of_rooms = serializers.IntegerField(min_value=1, default=1)
     guests = BookingGuestSerializer(many=True, required=False)
     special_requests = serializers.CharField(required=False, allow_blank=True)
+    # The guest's WhatsApp / mobile number for this booking - required,
+    # stored normalised on the primary BookingGuest.phone. Only the guest,
+    # the property's owner and admins can read it back.
+    guest_phone = serializers.CharField(
+        write_only=True, max_length=30,
+        error_messages={'required': 'WhatsApp / mobile number is required.',
+                        'blank': 'WhatsApp / mobile number is required.'},
+    )
+
+    def validate_guest_phone(self, value):
+        return validated_guest_phone(value)
 
     def validate_check_in_date(self, value):
         """Validate check-in date is not in past"""
