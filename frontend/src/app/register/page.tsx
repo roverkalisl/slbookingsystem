@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/stores/auth'
 import { useForm } from 'react-hook-form'
 import { Home } from 'lucide-react'
+import { goAfterAuth, loginUrl, postRegisterDestination, returnPathFromSearch } from '@/lib/authRedirect'
 
 interface RegisterForm {
   first_name: string
@@ -20,17 +21,34 @@ interface RegisterForm {
   role: string
 }
 
+// Owners keep the /bookings landing; guests go back to the pending booking
+// (safe internal ?next=) or /search.
+function redirectAfterRegister(
+  user: Parameters<typeof postRegisterDestination>[0],
+  push: (href: string) => void,
+): void {
+  const returnPath = returnPathFromSearch(window.location.search)
+  goAfterAuth(postRegisterDestination(user, returnPath), returnPath, push)
+}
+
 export default function RegisterPage() {
   const router = useRouter()
-  const { isAuthenticated, register: registerUser, error, clearError } = useAuth()
+  const { user, isAuthenticated, register: registerUser, error, clearError } = useAuth()
   const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<RegisterForm>()
   const password = watch('password')
+  // Pending booking (?next=, e.g. from Book Now -> Login -> Sign up). Read from
+  // window.location (not useSearchParams) to stay static-export friendly.
+  const [returnPath, setReturnPath] = useState<string | null>(null)
+
+  useEffect(() => {
+    setReturnPath(returnPathFromSearch(window.location.search))
+  }, [])
 
   useEffect(() => {
     if (isAuthenticated) {
-      router.push('/bookings')
+      redirectAfterRegister(user, (href) => router.push(href))
     }
-  }, [isAuthenticated, router])
+  }, [isAuthenticated, user, router])
 
   const onSubmit = async (data: RegisterForm) => {
     try {
@@ -41,7 +59,7 @@ export default function RegisterPage() {
         last_name: data.last_name,
         role: data.role,
       })
-      router.push('/bookings')
+      redirectAfterRegister(useAuth.getState().user, (href) => router.push(href))
     } catch (err) {
       // Error is stored in auth store
     }
@@ -208,7 +226,7 @@ export default function RegisterPage() {
           {/* Sign In Link */}
           <p className="text-center text-gray-600 mt-6">
             Already have an account?{' '}
-            <Link href="/login" className="text-primary hover:text-secondary font-semibold">
+            <Link href={loginUrl(returnPath)} className="text-primary hover:text-secondary font-semibold">
               Sign in
             </Link>
           </p>

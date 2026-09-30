@@ -14,6 +14,7 @@ import { api } from '@/lib/api'
 import { useDynamicRouteId } from '@/lib/useDynamicRouteId'
 import { normalizeWhatsAppNumber, whatsappLink } from '@/lib/whatsapp'
 import { nightsBetween, trackEvent } from '@/lib/analytics'
+import { bookingLoginRedirect, bookingReturnPath, loginUrl, parseBookingDraft } from '@/lib/authRedirect'
 import type { Property, BookingPrice } from '@/types'
 import {
   Star,
@@ -78,9 +79,18 @@ export function PropertyContent() {
         const unit = data.booking_mode === 'whole_property'
           ? data.room_types?.find((r) => r.is_property_unit)
           : data.room_types?.length === 1 ? data.room_types[0] : undefined
+        // Booking form saved in the URL when a signed-out guest was sent to
+        // login from Book Now - restore it so they continue the same booking.
+        const draft = parseBookingDraft(window.location.search)
+        const draftRoom = draft.roomTypeId ? data.room_types?.find((r) => r.id === draft.roomTypeId) : undefined
         if (unit) {
           setSelectedRoomTypeId(unit.id)
+        } else if (draftRoom) {
+          setSelectedRoomTypeId(draftRoom.id)
         }
+        if (draft.checkIn) setCheckIn(draft.checkIn)
+        if (draft.checkOut) setCheckOut(draft.checkOut)
+        if (draft.guests) setGuests(draft.guests)
       } catch (error) {
         console.error('Failed to load property:', error)
       } finally {
@@ -152,9 +162,18 @@ export function PropertyContent() {
 
   const guestPhoneValid = normalizeWhatsAppNumber(guestPhone) !== null
 
+  // This property with the current booking form, to come back to after login
+  // (no phone number - it is prefilled from the guest's profile instead).
+  const returnPath = property
+    ? bookingReturnPath(`/property/${encodeURIComponent(property.id)}`, {
+        roomTypeId: selectedRoomTypeId, checkIn, checkOut, guests,
+      })
+    : null
+
   const handleBooking = async () => {
-    if (!isAuthenticated) {
-      window.location.href = '/login'
+    const loginRedirect = bookingLoginRedirect(isAuthenticated, returnPath ?? '')
+    if (loginRedirect) {
+      window.location.href = loginRedirect
       return
     }
 
@@ -645,7 +664,7 @@ export function PropertyContent() {
 
             {!isAuthenticated && (
               <p className="text-xs text-gray-600 mt-2 text-center">
-                <Link href="/login" className="text-primary hover:underline">
+                <Link href={loginUrl(returnPath)} className="text-primary hover:underline">
                   Sign in
                 </Link>
                 {' '}to book this property

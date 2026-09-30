@@ -10,25 +10,36 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/stores/auth'
 import { useForm } from 'react-hook-form'
 import { Home } from 'lucide-react'
+import { goAfterAuth, postLoginDestination, registerUrl, returnPathFromSearch } from '@/lib/authRedirect'
 
 interface LoginForm {
   email: string
   password: string
 }
 
-// Determine landing page based on the user's role
-function getRoleHome(user?: { roles?: string[]; is_staff?: boolean; is_superuser?: boolean } | null): string {
-  if (user?.is_staff || user?.is_superuser || user?.roles?.includes('super_admin')) {
-    return '/admin/dashboard'
-  }
-  if (user?.roles?.includes('property_owner')) return '/owner/dashboard'
-  return '/search'
+// Role landing page, or - for guests - the safe internal ?next= page they came
+// from (e.g. the property they were booking). window.location (not
+// useSearchParams) keeps this page static-export friendly.
+function redirectAfterLogin(
+  user: Parameters<typeof postLoginDestination>[0],
+  push: (href: string) => void,
+): string {
+  const returnPath = returnPathFromSearch(window.location.search)
+  const destination = postLoginDestination(user, returnPath)
+  goAfterAuth(destination, returnPath, push)
+  return destination
 }
 
 export default function LoginPage() {
   const router = useRouter()
   const { user, isAuthenticated, isLoading, login, error, clearError } = useAuth()
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginForm>()
+  // Pending booking (?next=) to keep if the guest signs up instead
+  const [returnPath, setReturnPath] = useState<string | null>(null)
+
+  useEffect(() => {
+    setReturnPath(returnPathFromSearch(window.location.search))
+  }, [])
 
   // DIAGNOSTIC: Log when component mounts
   useEffect(() => {
@@ -37,9 +48,8 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      const destination = getRoleHome(user)
+      const destination = redirectAfterLogin(user, (href) => router.push(href))
       console.log('[LOGIN PAGE] isAuthenticated=true, redirecting to', destination)
-      router.push(destination)
     }
   }, [isAuthenticated, isLoading, user, router])
 
@@ -51,9 +61,8 @@ export default function LoginPage() {
     try {
       console.log('[LOGIN PAGE] Calling auth.login()...')
       await login(data.email, data.password)
-      const destination = getRoleHome(useAuth.getState().user)
+      const destination = redirectAfterLogin(useAuth.getState().user, (href) => router.push(href))
       console.log('[LOGIN PAGE] login() succeeded, attempting redirect to', destination)
-      router.push(destination)
     } catch (err) {
       console.log('[LOGIN PAGE] login() threw error:', err instanceof Error ? err.message : String(err))
       // Error is stored in auth store
@@ -174,7 +183,7 @@ export default function LoginPage() {
           {/* Sign Up Link */}
           <p className="text-center text-gray-600">
             Don't have an account?{' '}
-            <Link href="/register" className="text-primary hover:text-secondary font-semibold">
+            <Link href={registerUrl(returnPath)} className="text-primary hover:text-secondary font-semibold">
               Sign up
             </Link>
           </p>
