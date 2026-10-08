@@ -37,6 +37,7 @@ export interface AssistantPropertyCard {
   cover_photo_url: string | null
   average_rating: string | number
   total_reviews: number
+  amenities: Array<{ id: number; name: string }>
   min_price: string | null
   room_count: number
   short_description: string | null
