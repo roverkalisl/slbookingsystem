@@ -4,85 +4,127 @@
 
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { PropertyCard } from '@/components/PropertyCard'
 import { api } from '@/lib/api'
 import type { Property } from '@/types'
 import { Search, MapPin, Calendar, Users } from 'lucide-react'
 
 export default function Home() {
+  const router = useRouter()
   const [featured, setFeatured] = useState<Property[]>([])
   const [loading, setLoading] = useState(true)
+  const [featuredError, setFeaturedError] = useState(false)
+  const [featuredRetry, setFeaturedRetry] = useState(0)
+  const [destination, setDestination] = useState('')
+  const [checkIn, setCheckIn] = useState('')
+  const [checkOut, setCheckOut] = useState('')
+  const [guests, setGuests] = useState(2)
+  const [searchError, setSearchError] = useState('')
 
   useEffect(() => {
+    let cancelled = false
+
     async function loadFeatured() {
+      setLoading(true)
+      setFeaturedError(false)
       try {
         const data = await api.getFeaturedProperties()
-        setFeatured(data)
+        if (!cancelled) setFeatured(data)
       } catch (error) {
         console.error('Failed to load featured properties:', error)
+        if (!cancelled) setFeaturedError(true)
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
 
     loadFeatured()
-  }, [])
+    return () => { cancelled = true }
+  }, [featuredRetry])
+
+  const handleSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSearchError('')
+
+    if (checkIn && checkOut && checkOut <= checkIn) {
+      setSearchError('Check-out must be after check-in.')
+      return
+    }
+
+    const params = new URLSearchParams()
+    if (destination.trim()) params.set('destination', destination.trim())
+    if (checkIn) params.set('check_in', checkIn)
+    if (checkOut) params.set('check_out', checkOut)
+    params.set('guests', String(Math.max(1, guests)))
+    router.push(`/search?${params.toString()}`)
+  }
 
   return (
     <>
       {/* Hero Section */}
       <section className="bg-gradient-to-r from-primary to-secondary text-white py-16">
         <div className="container">
-          <h1 className="text-5xl font-bold mb-4">Welcome to SL Booking</h1>
-          <p className="text-xl mb-8">Discover the best accommodations across Sri Lanka</p>
+          <h1 className="text-4xl sm:text-5xl font-bold mb-4">Welcome to SL Booking</h1>
+          <p className="text-lg sm:text-xl mb-8">Discover the best accommodations across Sri Lanka</p>
 
           {/* Search Bar */}
-          <div className="bg-white text-gray-900 rounded-lg p-6 shadow-lg">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="flex items-center gap-2">
+          <form onSubmit={handleSearch} className="bg-white text-gray-900 rounded-lg p-4 sm:p-6 shadow-lg">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-3">
                 <MapPin className="w-5 h-5 text-gray-500" />
                 <input
                   type="text"
+                  aria-label="Destination"
                   placeholder="Destination"
-                  className="flex-1 border-0 focus:ring-0 px-0"
+                  value={destination}
+                  onChange={(event) => setDestination(event.target.value)}
+                  className="min-w-0 flex-1 border-0 focus:ring-0 px-0"
                 />
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-3">
                 <Calendar className="w-5 h-5 text-gray-500" />
                 <input
                   type="date"
-                  className="flex-1 border-0 focus:ring-0 px-0"
+                  aria-label="Check-in"
+                  value={checkIn}
+                  onChange={(event) => setCheckIn(event.target.value)}
+                  className="min-w-0 flex-1 border-0 focus:ring-0 px-0"
                 />
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-3">
                 <Calendar className="w-5 h-5 text-gray-500" />
                 <input
                   type="date"
-                  className="flex-1 border-0 focus:ring-0 px-0"
+                  aria-label="Check-out"
+                  min={checkIn || undefined}
+                  value={checkOut}
+                  onChange={(event) => setCheckOut(event.target.value)}
+                  className="min-w-0 flex-1 border-0 focus:ring-0 px-0"
                 />
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-3">
                 <Users className="w-5 h-5 text-gray-500" />
                 <input
                   type="number"
+                  aria-label="Guests"
                   min="1"
-                  defaultValue="2"
-                  className="flex-1 border-0 focus:ring-0 px-0"
+                  value={guests}
+                  onChange={(event) => setGuests(Number(event.target.value) || 1)}
+                  className="min-w-0 flex-1 border-0 focus:ring-0 px-0"
                 />
               </div>
             </div>
+            {searchError && <p role="alert" className="mt-3 text-sm text-red-700">{searchError}</p>}
             <div className="mt-4">
-              <Link
-                href="/search"
-                className="w-full btn-primary flex items-center justify-center gap-2"
-              >
+              <button type="submit" className="w-full btn-primary flex items-center justify-center gap-2">
                 <Search className="w-5 h-5" />
                 Search Properties
-              </Link>
+              </button>
             </div>
-          </div>
+          </form>
         </div>
       </section>
 
@@ -93,6 +135,13 @@ export default function Home() {
         {loading ? (
           <div className="text-center py-12">
             <p className="text-gray-600">Loading properties...</p>
+          </div>
+        ) : featuredError ? (
+          <div className="text-center py-12" role="alert">
+            <p className="text-gray-700 mb-4">Unable to load featured properties. Please try again.</p>
+            <button type="button" onClick={() => setFeaturedRetry((retry) => retry + 1)} className="btn-secondary">
+              Try again
+            </button>
           </div>
         ) : featured.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

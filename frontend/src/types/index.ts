@@ -172,6 +172,7 @@ export interface Booking {
   room_type_id: string
   property_id?: string
   property_name?: string
+  property_cover?: string
   room_type_name?: string
   guest_name?: string
   guest_email?: string
@@ -182,6 +183,12 @@ export interface Booking {
   number_of_nights: number
   number_of_adults: number
   number_of_children: number
+  number_of_rooms?: number
+  room_price?: number
+  subtotal?: number
+  discount?: number
+  service_fee?: number
+  tax?: number
   total_price: number
   /** Booking.STATUS_CHOICES (apps/bookings/models.py) */
   status: BookingStatus

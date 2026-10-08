@@ -82,7 +82,7 @@ export default function RegisterPage() {
         {/* Form Card */}
         <div className="bg-white rounded-lg shadow-xl p-8">
           {error && (
-            <div className="mb-4 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+            <div role="alert" className="mb-4 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
               {error}
               <button
                 onClick={clearError}
@@ -96,9 +96,11 @@ export default function RegisterPage() {
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             {/* First Name */}
             <div>
-              <label className="block text-sm font-semibold mb-2">First Name</label>
+              <label htmlFor="register-first-name" className="block text-sm font-semibold mb-2">First Name</label>
               <input
+                id="register-first-name"
                 type="text"
+                autoComplete="given-name"
                 placeholder="John"
                 {...register('first_name', {
                   required: 'First name is required'
@@ -110,9 +112,11 @@ export default function RegisterPage() {
 
             {/* Last Name */}
             <div>
-              <label className="block text-sm font-semibold mb-2">Last Name</label>
+              <label htmlFor="register-last-name" className="block text-sm font-semibold mb-2">Last Name</label>
               <input
+                id="register-last-name"
                 type="text"
+                autoComplete="family-name"
                 placeholder="Doe"
                 {...register('last_name', {
                   required: 'Last name is required'
@@ -124,9 +128,11 @@ export default function RegisterPage() {
 
             {/* Email */}
             <div>
-              <label className="block text-sm font-semibold mb-2">Email</label>
+              <label htmlFor="register-email" className="block text-sm font-semibold mb-2">Email</label>
               <input
+                id="register-email"
                 type="email"
+                autoComplete="email"
                 placeholder="you@example.com"
                 {...register('email', {
                   required: 'Email is required',
@@ -142,8 +148,9 @@ export default function RegisterPage() {
 
             {/* Role */}
             <div>
-              <label className="block text-sm font-semibold mb-2">I am a</label>
+              <label htmlFor="register-role" className="block text-sm font-semibold mb-2">I am a</label>
               <select
+                id="register-role"
                 {...register('role', {
                   required: 'Please select your account type'
                 })}
@@ -158,9 +165,11 @@ export default function RegisterPage() {
 
             {/* Password */}
             <div>
-              <label className="block text-sm font-semibold mb-2">Password</label>
+              <label htmlFor="register-password" className="block text-sm font-semibold mb-2">Password</label>
               <input
+                id="register-password"
                 type="password"
+                autoComplete="new-password"
                 placeholder="••••••••"
                 {...register('password', {
                   required: 'Password is required',
@@ -180,9 +189,11 @@ export default function RegisterPage() {
 
             {/* Confirm Password */}
             <div>
-              <label className="block text-sm font-semibold mb-2">Confirm Password</label>
+              <label htmlFor="register-password-confirm" className="block text-sm font-semibold mb-2">Confirm Password</label>
               <input
+                id="register-password-confirm"
                 type="password"
+                autoComplete="new-password"
                 placeholder="••••••••"
                 {...register('password_confirm', {
                   required: 'Please confirm your password',
@@ -203,11 +214,11 @@ export default function RegisterPage() {
               />
               <label htmlFor="terms" className="ml-2 text-sm text-gray-600">
                 I agree to the{' '}
-                <Link href="#" className="text-primary hover:underline">
+                <Link href="/terms" className="text-primary hover:underline">
                   Terms of Service
                 </Link>{' '}
                 and{' '}
-                <Link href="#" className="text-primary hover:underline">
+                <Link href="/privacy" className="text-primary hover:underline">
                   Privacy Policy
                 </Link>
               </label>
@@ -217,7 +228,7 @@ export default function RegisterPage() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full min-h-11 btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? 'Creating account...' : 'Create Account'}
             </button>

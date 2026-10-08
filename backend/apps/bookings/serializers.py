@@ -159,12 +159,9 @@ class BookingCreateSerializer(serializers.Serializer):
     """
     Serializer for creating bookings.
 
-    SECURITY: accepts only what the guest legitimately chooses (room, dates,
-    guest counts, room count, guest details, requests). No financial field -
-    discount_percent, discount_fixed, subtotal, discount, tax, service_fee,
-    total_price, room_price - is declared, so any such values sent by a client
-    are ignored. BookingService/PricingCalculator compute the authoritative
-    price server-side.
+    SECURITY: the server computes the authoritative price. expected_total is
+    accepted only as a quote-staleness check; it never sets the booking price.
+    Guest-supplied totals, fees and discounts are ignored.
     """
     room_type_id = serializers.UUIDField()
     check_in_date = serializers.DateField()
@@ -174,6 +171,11 @@ class BookingCreateSerializer(serializers.Serializer):
     number_of_rooms = serializers.IntegerField(min_value=1, default=1)
     guests = BookingGuestSerializer(many=True, required=False)
     special_requests = serializers.CharField(required=False, allow_blank=True)
+    # Comparison only: BookingService recalculates the authoritative total and
+    # rejects the request if this previously quoted amount is now stale.
+    expected_total = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=0, required=False,
+    )
     # The guest's WhatsApp / mobile number for this booking - required,
     # stored normalised on the primary BookingGuest.phone. Only the guest,
     # the property's owner and admins can read it back.

@@ -1154,6 +1154,25 @@ class BookingPriceIntegrityTestCase(MultiRoomTestMixin, TestCase):
     def test_normal_booking_price_unchanged(self):
         self.assert_full_price(self.post_booking())
 
+    def test_matching_expected_total_allows_booking(self):
+        booking = self.post_booking(expected_total='23100.00')
+        self.assert_full_price(booking)
+
+    def test_changed_expected_total_requires_recheck_without_creating_booking(self):
+        count_before = Booking.objects.count()
+        response = self.client.post('/api/bookings/', {
+            'room_type_id': str(self.room_type.id),
+            'guest_phone': '0771234567',
+            'check_in_date': str(self.monday),
+            'check_out_date': str(self.monday + timedelta(days=2)),
+            'number_of_adults': 1,
+            'expected_total': '23000.00',
+        }, format='json')
+
+        self.assertEqual(response.status_code, 409, response.data)
+        self.assertEqual(response.data['error_code'], 'PRICE_CHANGED')
+        self.assertEqual(Booking.objects.count(), count_before)
+
     def test_multi_room_price_with_attempted_discount(self):
         booking = self.post_booking(number_of_rooms=2, discount_percent='100')
         self.assert_full_price(booking, subtotal='40000.00', total='46200.00')

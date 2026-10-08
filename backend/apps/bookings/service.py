@@ -7,7 +7,7 @@ All booking operations use SELECT FOR UPDATE and atomic transactions.
 
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Sum
@@ -95,6 +95,7 @@ class BookingService:
         discount_percent: Decimal = Decimal('0'),
         discount_fixed: Decimal = Decimal('0'),
         guest_phone: str = None,
+        expected_total: Optional[Decimal] = None,
     ) -> Booking:
         """
         Create a booking with DOUBLE-BOOKING PREVENTION.
@@ -118,6 +119,8 @@ class BookingService:
             discount_percent: Discount percentage to apply (system-controlled only -
                 never pass client/guest input; the booking API passes none)
             discount_fixed: Fixed discount amount to apply (system-controlled only)
+            expected_total: Previously quoted total used only to detect a stale
+                price; the authoritative amount is always calculated here.
 
         Returns:
             Booking object (status='pending', payment_status='pending')
@@ -228,6 +231,10 @@ class BookingService:
             discount_percent=discount_percent,
             discount_fixed=discount_fixed
         )
+        if expected_total is not None and expected_total != price_breakdown['total']:
+            raise BookingPriceChangedError(
+                'The price has changed. Please review the latest price before confirming.'
+            )
 
         # Create booking
         booking = Booking.objects.create(
@@ -504,4 +511,9 @@ class BookingService:
 
 class BookingConflictError(Exception):
     """Exception raised when a booking cannot be created due to conflict"""
+    pass
+
+
+class BookingPriceChangedError(Exception):
+    """Exception raised when a booking quote is no longer current"""
     pass

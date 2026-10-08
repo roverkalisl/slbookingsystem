@@ -24,6 +24,8 @@ export function Navbar() {
     }
   }
 
+  const closeMobileMenu = () => setIsOpen(false)
+
   return (
     <nav className="bg-white shadow-md">
       <div className="max-w-7xl mx-auto px-4 py-4">
@@ -92,7 +94,11 @@ export function Navbar() {
 
           {/* Mobile Menu Button */}
           <button
-            className="md:hidden"
+            type="button"
+            className="md:hidden rounded-lg p-2 text-gray-700 hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+            aria-label={isOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-expanded={isOpen}
+            aria-controls="mobile-navigation"
             onClick={() => setIsOpen(!isOpen)}
           >
             {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -101,41 +107,41 @@ export function Navbar() {
 
         {/* Mobile Menu */}
         {isOpen && (
-          <div className="md:hidden mt-4 space-y-4">
-            <Link href="/" className="block text-gray-600 hover:text-primary">
+          <div id="mobile-navigation" className="md:hidden mt-4 space-y-1 border-t border-gray-100 pt-3">
+            <Link href="/" onClick={closeMobileMenu} className="block rounded-lg px-3 py-3 text-gray-600 hover:bg-gray-50 hover:text-primary">
               Home
             </Link>
-            <Link href="/search" className="block text-gray-600 hover:text-primary">
+            <Link href="/search" onClick={closeMobileMenu} className="block rounded-lg px-3 py-3 text-gray-600 hover:bg-gray-50 hover:text-primary">
               Search Properties
             </Link>
             {isAuthenticated && user ? (
               <>
-                <Link href="/bookings" className="block text-gray-600 hover:text-primary">
+                <Link href="/bookings" onClick={closeMobileMenu} className="block rounded-lg px-3 py-3 text-gray-600 hover:bg-gray-50 hover:text-primary">
                   My Bookings
                 </Link>
                 {user.roles?.includes('property_owner') && (
-                  <Link href="/owner/dashboard" className="block text-gray-600 hover:text-primary">
+                  <Link href="/owner/dashboard" onClick={closeMobileMenu} className="block rounded-lg px-3 py-3 text-gray-600 hover:bg-gray-50 hover:text-primary">
                     Owner Dashboard
                   </Link>
                 )}
                 {user.roles?.includes('super_admin') && (
-                  <Link href="/admin/dashboard" className="block text-gray-600 hover:text-primary">
+                  <Link href="/admin/dashboard" onClick={closeMobileMenu} className="block rounded-lg px-3 py-3 text-gray-600 hover:bg-gray-50 hover:text-primary">
                     Admin Dashboard
                   </Link>
                 )}
                 <button
-                  onClick={handleLogout}
-                  className="w-full text-left text-red-600 hover:text-red-700"
+                  onClick={() => { closeMobileMenu(); void handleLogout() }}
+                  className="w-full rounded-lg px-3 py-3 text-left text-red-600 hover:bg-red-50 hover:text-red-700"
                 >
                   Logout
                 </button>
               </>
             ) : (
               <>
-                <Link href="/login" className="block text-primary">
+                <Link href="/login" onClick={closeMobileMenu} className="block rounded-lg px-3 py-3 text-primary hover:bg-blue-50">
                   Login
                 </Link>
-                <Link href="/register" className="block text-primary">
+                <Link href="/register" onClick={closeMobileMenu} className="block rounded-lg px-3 py-3 text-primary hover:bg-blue-50">
                   Sign Up
                 </Link>
               </>

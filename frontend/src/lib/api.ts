@@ -498,13 +498,14 @@ class ApiClient {
 
   // ===== Bookings =====
   async createBooking(data: {
-      room_type_id: string
+    room_type_id: string
     check_in: string
     check_out: string
     num_adults: number
     num_children: number
     special_requests?: string
     guest_phone: string
+    expected_total?: number
   }): Promise<Booking> {
     const response = await this.client.post<any>('/bookings/', {
       room_type_id: data.room_type_id,
@@ -514,6 +515,7 @@ class ApiClient {
       number_of_children: data.num_children,
       special_requests: data.special_requests,
       guest_phone: data.guest_phone,
+      expected_total: data.expected_total,
     })
     return response.data.data || response.data
   }

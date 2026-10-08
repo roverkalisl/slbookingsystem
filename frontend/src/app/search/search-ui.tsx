@@ -17,6 +17,8 @@ function SearchContent() {
   const searchParams = useSearchParams()
   const [properties, setProperties] = useState<Property[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
+  const [retry, setRetry] = useState(0)
   const [showFilters, setShowFilters] = useState(false)
   const [sortBy, setSortBy] = useState<'price_asc' | 'price_desc' | 'rating' | 'newest'>('price_asc')
   const [priceRange, setPriceRange] = useState({ min: 0, max: 100000 })
@@ -25,7 +27,7 @@ function SearchContent() {
   const destination = searchParams.get('destination') || ''
   const checkIn = searchParams.get('check_in') || ''
   const checkOut = searchParams.get('check_out') || ''
-  const guests = parseInt(searchParams.get('guests') || '2', 10)
+  const guests = Math.max(1, parseInt(searchParams.get('guests') || '2', 10) || 2)
   const propertyType = searchParams.get('property_type') || ''
 
   // One analytics event per distinct search (not on sort/price-slider changes).
@@ -39,9 +41,13 @@ function SearchContent() {
   }, [destination, propertyType, guests])
 
   useEffect(() => {
+    let cancelled = false
+
     async function loadProperties() {
+      setLoading(true)
+      setLoadError(false)
+      setProperties([])
       try {
-        setLoading(true)
         const filters: SearchFilters = {
           destination: destination || undefined,
           check_in: checkIn || undefined,
@@ -49,19 +55,22 @@ function SearchContent() {
           sort_by: sortBy,
           min_price: priceRange.min,
           max_price: priceRange.max,
+          guests,
         }
 
         const response = await api.getProperties(filters)
-        setProperties(response.results || [])
+        if (!cancelled) setProperties(response.results || [])
       } catch (error) {
         console.error('Failed to load properties:', error)
+        if (!cancelled) setLoadError(true)
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
 
     loadProperties()
-  }, [destination, checkIn, checkOut, sortBy, priceRange])
+    return () => { cancelled = true }
+  }, [destination, checkIn, checkOut, guests, sortBy, priceRange, retry])
 
   const filteredByPrice = properties.filter(
     (p) => p.price_range_min >= priceRange.min && p.price_range_max <= priceRange.max
@@ -104,6 +113,9 @@ function SearchContent() {
           {/* Sidebar Filters */}
           <div className="lg:col-span-1">
             <button
+              type="button"
+              aria-expanded={showFilters}
+              aria-controls="search-filters"
               onClick={() => setShowFilters(!showFilters)}
               className="w-full lg:hidden mb-4 flex items-center justify-between px-4 py-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
             >
@@ -114,7 +126,7 @@ function SearchContent() {
               <ChevronDown className={`w-5 h-5 transition ${showFilters ? 'rotate-180' : ''}`} />
             </button>
 
-            <div className={`${showFilters ? 'block' : 'hidden'} lg:block space-y-6 bg-white p-6 rounded-lg`}>
+            <div id="search-filters" className={`${showFilters ? 'block' : 'hidden'} lg:block space-y-6 bg-white p-6 rounded-lg`}>
               {/* Price Range Filter */}
               <div>
                 <h3 className="font-semibold mb-4">Price Range</h3>
@@ -177,6 +189,13 @@ function SearchContent() {
             {loading ? (
               <div className="text-center py-12">
                 <p className="text-gray-600">Loading properties...</p>
+              </div>
+            ) : loadError ? (
+              <div className="text-center py-12 bg-white rounded-lg" role="alert">
+                <p className="text-gray-700 mb-4">Unable to load properties. Please try again.</p>
+                <button type="button" onClick={() => setRetry((value) => value + 1)} className="btn-secondary">
+                  Try again
+                </button>
               </div>
             ) : filteredByPrice.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

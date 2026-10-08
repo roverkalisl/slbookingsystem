@@ -19,11 +19,13 @@ export function PropertyCard({ property }: PropertyCardProps) {
   const imageUrl = property.cover_photo_url || property.photos.find(photo => photo.url)?.url || null
   const startingPrice = Number(property.price_range_min)
 
+  const location = [property.city, property.district].filter(Boolean).join(', ')
+
   return (
-    <Link href={`/property/${property.id}`}>
-      <div className="bg-white rounded-lg shadow hover:shadow-lg transition cursor-pointer overflow-hidden">
+    <Link href={`/property/${property.id}`} className="block rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+      <article className="h-full bg-white rounded-lg shadow hover:shadow-lg transition overflow-hidden">
         {/* Image */}
-        <div className="relative h-48 w-full bg-gray-200">
+        <div className="relative h-48 w-full bg-gray-100">
           {imageUrl ? (
             <Image
               src={imageUrl}
@@ -46,18 +48,27 @@ export function PropertyCard({ property }: PropertyCardProps) {
           <div className="flex items-center gap-1 text-gray-600 text-sm mt-2">
             <MapPin className="w-4 h-4" />
             <span>
-              {property.city}, {property.district}
+              {location || 'Sri Lanka'}
             </span>
           </div>
 
           {/* Rating */}
-          <div className="flex items-center gap-2 mt-3">
-            <div className="flex items-center gap-1">
-              <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-              <span className="text-sm font-semibold">{property.rating.toFixed(1)}</span>
+          {property.review_count > 0 ? (
+            <div className="flex items-center gap-2 mt-3">
+              <div className="flex items-center gap-1">
+                <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                <span className="text-sm font-semibold">{property.rating.toFixed(1)}</span>
+              </div>
+              <span className="text-sm text-gray-500">({property.review_count} reviews)</span>
             </div>
-            <span className="text-sm text-gray-500">({property.review_count} reviews)</span>
-          </div>
+          ) : <p className="mt-3 text-sm text-gray-500">No reviews yet</p>}
+
+          {property.short_description && (
+            <p className="mt-3 line-clamp-2 text-sm text-gray-600">{property.short_description}</p>
+          )}
+          {property.property_type?.name && (
+            <p className="mt-2 text-xs font-medium uppercase tracking-wide text-gray-500">{property.property_type.name}</p>
+          )}
 
           {/* Price */}
           <div className="mt-4 pt-4 border-t border-gray-200">
@@ -74,8 +85,9 @@ export function PropertyCard({ property }: PropertyCardProps) {
               <p className="text-sm font-medium text-gray-500">Price not set</p>
             )}
           </div>
+          <p className="mt-4 font-semibold text-primary">View property</p>
         </div>
-      </div>
+      </article>
     </Link>
   )
 }

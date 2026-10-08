@@ -118,9 +118,9 @@ Start:       /opt/render/project/src/.venv/bin/gunicorn config.wsgi:application 
 ### Environment Variables
 ```
 DEBUG=False
-ALLOWED_HOSTS=slbookingsystem.onrender.com,slbooking.hotel.lk,www.slbooking.hotel.lk
-CORS_ALLOWED_ORIGINS=https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk
-CSRF_TRUSTED_ORIGINS=https://slbookingsystem.onrender.com,https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk
+ALLOWED_HOSTS=slbookingsystem.onrender.com,slbooking.hotel.lk,www.slbooking.hotel.lk,bookingsrilanka.lk,www.bookingsrilanka.lk
+CORS_ALLOWED_ORIGINS=https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk,https://bookingsrilanka.lk,https://www.bookingsrilanka.lk
+CSRF_TRUSTED_ORIGINS=https://slbookingsystem.onrender.com,https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk,https://bookingsrilanka.lk,https://www.bookingsrilanka.lk
 PYTHONUNBUFFERED=1
 DATABASE_URL=(auto-set by Render)
 SECRET_KEY=(generate in Render dashboard)

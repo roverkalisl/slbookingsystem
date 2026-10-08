@@ -46,9 +46,15 @@ export default function BookingsPage() {
   const { isAuthenticated, isLoading } = useAuth()
   const [bookings, setBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
+  const [reloadCount, setReloadCount] = useState(0)
   const [cancellingId, setCancellingId] = useState<string | null>(null)
   const [payingId, setPayingId] = useState<string | null>(null)
   const [payErrors, setPayErrors] = useState<Record<string, string>>({})
+  const [bookingDetails, setBookingDetails] = useState<Record<string, Booking>>({})
+  const [selectedDetailsId, setSelectedDetailsId] = useState<string | null>(null)
+  const [detailsLoadingId, setDetailsLoadingId] = useState<string | null>(null)
+  const [detailsErrors, setDetailsErrors] = useState<Record<string, string>>({})
   const [returnNotice, setReturnNotice] = useState<ReturnNotice | null>(null)
   const [createdReference, setCreatedReference] = useState<string | null>(null)
   const returnHandled = useRef(false)
@@ -90,10 +96,14 @@ export default function BookingsPage() {
     async function loadBookings(): Promise<Booking[] | null> {
       try {
         const data = await api.getBookings()
-        if (!cancelled) setBookings(data)
+        if (!cancelled) {
+          setBookings(data)
+          setLoadError(false)
+        }
         return data
       } catch (error) {
         console.error('Failed to load bookings:', error)
+        if (!cancelled) setLoadError(true)
         return null
       }
     }
@@ -142,7 +152,31 @@ export default function BookingsPage() {
       cancelled = true
       if (pollTimer) clearTimeout(pollTimer)
     }
-  }, [isAuthenticated])
+  }, [isAuthenticated, reloadCount])
+
+  const handleToggleDetails = async (bookingId: string) => {
+    if (selectedDetailsId === bookingId && !detailsErrors[bookingId]) {
+      setSelectedDetailsId(null)
+      return
+    }
+    setSelectedDetailsId(bookingId)
+    if (bookingDetails[bookingId]) return
+
+    setDetailsLoadingId(bookingId)
+    setDetailsErrors((current) => ({ ...current, [bookingId]: '' }))
+    try {
+      const details = await api.getBooking(bookingId)
+      setBookingDetails((current) => ({ ...current, [bookingId]: details }))
+    } catch (error) {
+      console.error('Failed to load booking details:', error)
+      setDetailsErrors((current) => ({
+        ...current,
+        [bookingId]: 'Unable to load booking details. Please try again.',
+      }))
+    } finally {
+      setDetailsLoadingId(null)
+    }
+  }
 
   const canPayOnline = (booking: Booking) =>
     PAYABLE_BOOKING_STATUSES.includes(booking.status) &&
@@ -283,6 +317,15 @@ export default function BookingsPage() {
         </div>
       )}
 
+      {loadError && bookings.length > 0 && (
+        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800" role="alert">
+          Could not refresh your bookings. Showing the last loaded information.
+          <button type="button" onClick={() => setReloadCount((count) => count + 1)} className="ml-2 font-semibold underline">
+            Try again
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="text-center py-12">
           <p className="text-gray-600">Loading your bookings...</p>
@@ -398,12 +441,17 @@ export default function BookingsPage() {
                         <p className="text-sm text-yellow-700">Your payment is being confirmed.</p>
                       )}
 
-                      <Link
-                        href={`/booking/${booking.id}`}
-                        className="w-full block text-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-secondary transition"
+                      <button
+                        type="button"
+                        onClick={() => void handleToggleDetails(booking.id)}
+                        disabled={detailsLoadingId !== null}
+                        aria-expanded={selectedDetailsId === booking.id}
+                        className="w-full min-h-11 px-4 py-2 bg-primary text-white rounded-lg hover:bg-secondary transition disabled:opacity-50"
                       >
-                        View Details
-                      </Link>
+                        {detailsLoadingId === booking.id
+                          ? 'Loading details...'
+                          : selectedDetailsId === booking.id ? 'Hide Details' : 'View Details'}
+                      </button>
 
                       {/* Owner's WhatsApp with a prefilled booking message - the number itself is never shown */}
                       {safeWhatsAppUrl(booking.owner_whatsapp_url) ? (
@@ -439,8 +487,54 @@ export default function BookingsPage() {
                   <p className="text-gray-600">{booking.special_requests}</p>
                 </div>
               )}
+
+              {selectedDetailsId === booking.id && (
+                <div className="mt-4 border-t border-gray-200 pt-4" aria-live="polite">
+                  {detailsLoadingId === booking.id ? (
+                    <p className="text-sm text-gray-600">Loading booking details...</p>
+                  ) : detailsErrors[booking.id] ? (
+                    <div role="alert" className="text-sm text-red-700">
+                      {detailsErrors[booking.id]}
+                      <button type="button" onClick={() => void handleToggleDetails(booking.id)} className="ml-2 font-semibold underline">
+                        Try again
+                      </button>
+                    </div>
+                  ) : bookingDetails[booking.id] ? (
+                    <div className="space-y-2 text-sm">
+                      <h3 className="font-semibold text-gray-900">Booking details</h3>
+                      <p><span className="text-gray-600">Property:</span> {bookingDetails[booking.id].property_name || booking.property_name || '—'}</p>
+                      <p><span className="text-gray-600">Room:</span> {bookingDetails[booking.id].room_type_name || booking.room_type_name || '—'}</p>
+                      <p><span className="text-gray-600">Rooms:</span> {bookingDetails[booking.id].number_of_rooms ?? 1}</p>
+                      {bookingDetails[booking.id].guests?.map((guest) => (
+                        <p key={guest.id}>
+                          <span className="text-gray-600">Guest:</span> {guest.first_name} {guest.last_name} · {guest.email}
+                          {guest.phone ? ` · ${guest.phone}` : ''}
+                        </p>
+                      ))}
+                      {bookingDetails[booking.id].subtotal != null && (
+                        <div className="max-w-sm border-t border-gray-200 pt-2 mt-2 space-y-1">
+                          <p className="flex justify-between"><span>Subtotal</span><span>LKR {Number(bookingDetails[booking.id].subtotal).toLocaleString()}</span></p>
+                          {Number(bookingDetails[booking.id].discount) > 0 && (
+                            <p className="flex justify-between"><span>Discount</span><span>-LKR {Number(bookingDetails[booking.id].discount).toLocaleString()}</span></p>
+                          )}
+                          <p className="flex justify-between"><span>Service fee</span><span>LKR {Number(bookingDetails[booking.id].service_fee || 0).toLocaleString()}</span></p>
+                          <p className="flex justify-between"><span>Tax</span><span>LKR {Number(bookingDetails[booking.id].tax || 0).toLocaleString()}</span></p>
+                          <p className="flex justify-between font-semibold"><span>Total</span><span>LKR {Number(bookingDetails[booking.id].total_price).toLocaleString()}</span></p>
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              )}
             </div>
           ))}
+        </div>
+      ) : loadError ? (
+        <div className="card p-12 text-center" role="alert">
+          <p className="text-gray-700 mb-4">Unable to load your bookings. Please try again.</p>
+          <button type="button" onClick={() => setReloadCount((count) => count + 1)} className="btn-primary">
+            Try again
+          </button>
         </div>
       ) : (
         <div className="card p-12 text-center">

@@ -38,7 +38,7 @@ if not SECRET_KEY or len(SECRET_KEY) < 50:
 # Allowed hosts - configure with your domains
 ALLOWED_HOSTS = config(
     'ALLOWED_HOSTS',
-    default='slbookingsystem.onrender.com,slbooking.hotel.lk,www.slbooking.hotel.lk',
+    default='slbookingsystem.onrender.com,slbooking.hotel.lk,www.slbooking.hotel.lk,bookingsrilanka.lk,www.bookingsrilanka.lk',
     cast=Csv(),
 )
 
@@ -47,7 +47,7 @@ ALLOWED_HOSTS = config(
 # the app sits behind a reverse proxy like Render's edge. Must include scheme.
 CSRF_TRUSTED_ORIGINS = config(
     'CSRF_TRUSTED_ORIGINS',
-    default='https://slbookingsystem.onrender.com,https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk',
+    default='https://slbookingsystem.onrender.com,https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk,https://bookingsrilanka.lk,https://www.bookingsrilanka.lk',
     cast=Csv()
 )
 
@@ -402,7 +402,7 @@ FIREBASE_SERVICE_ACCOUNT = config('FIREBASE_SERVICE_ACCOUNT', default='')
 
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
-    default='https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk',
+    default='https://slbookingsystem-frontend.onrender.com,https://slbooking.hotel.lk,https://www.slbooking.hotel.lk,https://bookingsrilanka.lk,https://www.bookingsrilanka.lk',
     cast=Csv()
 )
 

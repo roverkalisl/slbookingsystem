@@ -99,7 +99,7 @@ export default function LoginPage() {
         {/* Form Card */}
         <div className="bg-white rounded-lg shadow-xl p-8">
           {error && (
-            <div className="mb-4 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+            <div role="alert" className="mb-4 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
               {error}
               <button
                 onClick={clearError}
@@ -113,9 +113,11 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-4">
             {/* Email */}
             <div>
-              <label className="block text-sm font-semibold mb-2">Email</label>
+              <label htmlFor="login-email" className="block text-sm font-semibold mb-2">Email</label>
               <input
+                id="login-email"
                 type="email"
+                autoComplete="email"
                 placeholder="you@example.com"
                 {...register('email', {
                   required: 'Email is required',
@@ -124,16 +126,20 @@ export default function LoginPage() {
                     message: 'Please enter a valid email'
                   }
                 })}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary focus:border-transparent"
+                aria-invalid={!!errors.email}
+                aria-describedby={errors.email ? 'login-email-error' : undefined}
+                className="w-full min-h-11 border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary focus:border-transparent"
               />
-              {errors.email && <p className="text-red-600 text-sm mt-1">{errors.email.message}</p>}
+              {errors.email && <p id="login-email-error" className="text-red-600 text-sm mt-1">{errors.email.message}</p>}
             </div>
 
             {/* Password */}
             <div>
-              <label className="block text-sm font-semibold mb-2">Password</label>
+              <label htmlFor="login-password" className="block text-sm font-semibold mb-2">Password</label>
               <input
+                id="login-password"
                 type="password"
+                autoComplete="current-password"
                 placeholder="••••••••"
                 {...register('password', {
                   required: 'Password is required',
@@ -142,9 +148,11 @@ export default function LoginPage() {
                     message: 'Password must be at least 6 characters'
                   }
                 })}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary focus:border-transparent"
+                aria-invalid={!!errors.password}
+                aria-describedby={errors.password ? 'login-password-error' : undefined}
+                className="w-full min-h-11 border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary focus:border-transparent"
               />
-              {errors.password && <p className="text-red-600 text-sm mt-1">{errors.password.message}</p>}
+              {errors.password && <p id="login-password-error" className="text-red-600 text-sm mt-1">{errors.password.message}</p>}
             </div>
 
             {/* Remember Me */}
@@ -152,7 +160,7 @@ export default function LoginPage() {
               <input
                 type="checkbox"
                 id="remember"
-                className="w-4 h-4 text-primary rounded"
+                className="h-5 w-5 text-primary rounded"
               />
               <label htmlFor="remember" className="ml-2 text-sm text-gray-600">
                 Remember me
@@ -164,7 +172,7 @@ export default function LoginPage() {
               type="submit"
               disabled={isSubmitting}
               onClick={handleSignInClick}
-              className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full min-h-11 btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? 'Signing in...' : 'Sign In'}
             </button>

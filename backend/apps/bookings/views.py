@@ -20,7 +20,7 @@ from .serializers import (
     AvailabilityCheckSerializer, AvailabilityResponseSerializer,
     AdminBookingListSerializer
 )
-from .service import BookingService, BookingConflictError
+from .service import BookingService, BookingConflictError, BookingPriceChangedError
 from apps.properties.models import RoomType
 from apps.properties.pricing import PricingCalculator
 
@@ -133,8 +133,9 @@ class BookingViewSet(viewsets.ModelViewSet):
             "guest_phone": "0771234567"      (required; stored as +94771234567)
         }
 
-        The price is always calculated server-side; client-supplied discounts
-        or totals are ignored.
+        The price is always calculated server-side; expected_total, when
+        supplied, only verifies that the displayed quote is still current.
+        Guest-supplied totals, fees and discounts are ignored.
         """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -155,6 +156,7 @@ class BookingViewSet(viewsets.ModelViewSet):
                 guest_details=serializer.validated_data.get('guests'),
                 special_requests=serializer.validated_data.get('special_requests', ''),
                 guest_phone=serializer.validated_data['guest_phone'],
+                expected_total=serializer.validated_data.get('expected_total'),
                 # No discount args: guests must never choose their own discount.
             )
 
@@ -175,6 +177,17 @@ class BookingViewSet(viewsets.ModelViewSet):
                     'data': output_serializer.data
                 },
                 status=status.HTTP_201_CREATED
+            )
+
+        except BookingPriceChangedError as e:
+            return Response(
+                {
+                    'success': False,
+                    'detail': str(e),
+                    'error': str(e),
+                    'error_code': 'PRICE_CHANGED'
+                },
+                status=status.HTTP_409_CONFLICT
             )
 
         except BookingConflictError as e:
