@@ -19,6 +19,7 @@ import type {
   PropertyPhotoState,
   VillaDetails,
   VillaDetailsInput,
+  AssistantChatResponse,
 } from '@/types'
 
 const API_BASE_URL =
@@ -165,6 +166,19 @@ class ApiClient {
       }
       throw error
     }
+  }
+
+  async sendAssistantMessage(
+    message: string,
+    language: 'en' | 'si',
+    history: Array<{ role: 'user' | 'assistant'; content: string }>
+  ): Promise<AssistantChatResponse> {
+    const response = await this.client.post<AssistantChatResponse>('/assistant/chat/', {
+      message,
+      language,
+      history,
+    })
+    return response.data
   }
 
   async logout(): Promise<void> {

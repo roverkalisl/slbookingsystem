@@ -109,6 +109,16 @@ npm run dev
 
 Frontend will be available at: `http://localhost:3000`
 
+### Booking Assistant
+
+The public English/Sinhala booking assistant uses OpenAI from the Django
+backend. Configure `AI_PROVIDER=openai`, `AI_MODEL=gpt-4o-mini`, and
+`AI_API_KEY` in the backend environment. On Render, set `AI_API_KEY` under the
+web service's Environment settings. Keep the key server-side; do not add a
+`NEXT_PUBLIC_` prefix. The assistant is read-only: it searches approved
+properties, checks dates/prices, and links guests to the existing property
+booking flow.
+
 ## API Documentation
 
 Full API documentation is auto-generated at `/api/docs/` (Swagger/OpenAPI)

@@ -60,6 +60,17 @@ services:
       - key: NEXT_PUBLIC_API_URL
         value: "https://slbookingsystem.onrender.com/api"
 
+      # Server-side Booking Assistant provider. Add the API key in Render's
+      # Environment dashboard; it is never embedded in the static frontend.
+      - key: AI_PROVIDER
+        value: "openai"
+
+      - key: AI_MODEL
+        value: "gpt-4o-mini"
+
+      - key: AI_API_KEY
+        sync: false
+
       # Where Stripe returns guests after payment - keep on a domain that is
       # already serving the app (switch to https://slbooking.hotel.lk only
       # once that domain points at this service).

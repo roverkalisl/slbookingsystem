@@ -360,6 +360,7 @@ REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'] = {  # noqa
     'booking': '10/hour',        # 10 bookings/hour per user
     'payment': '50/hour',        # 50 payment attempts/hour
     'search': '200/hour',        # 200 searches/hour
+    'ai_assistant': '20/hour',   # Bound provider usage per guest/account
 }
 
 # Disable format suffix patterns to prevent converter registration conflicts

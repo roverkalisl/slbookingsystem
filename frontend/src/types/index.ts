@@ -28,6 +28,33 @@ export interface AuthResponse {
   user: User
 }
 
+export interface AssistantPropertyCard {
+  id: string
+  slug: string
+  name: string
+  city: string
+  property_type_name: string | null
+  cover_photo_url: string | null
+  average_rating: string | number
+  total_reviews: number
+  min_price: string | null
+  room_count: number
+  short_description: string | null
+}
+
+export interface AssistantBookingContext {
+  check_in?: string
+  check_out?: string
+  adults?: number
+  children?: number
+}
+
+export interface AssistantChatResponse {
+  reply: string
+  properties: AssistantPropertyCard[]
+  booking_context: AssistantBookingContext
+}
+
 export interface Property {
   id: string
   name: string

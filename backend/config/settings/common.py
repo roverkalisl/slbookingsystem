@@ -38,6 +38,7 @@ LOCAL_APPS = [
     'apps.payments',
     'apps.reviews',
     'apps.notifications',
+    'apps.assistant',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -161,7 +162,8 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_THROTTLE_RATES': {
         'anon': '100/hour',
-        'user': '1000/hour'
+        'user': '1000/hour',
+        'ai_assistant': '20/hour',
     },
 }
 
@@ -189,6 +191,11 @@ CORS_ALLOWED_ORIGINS = config(
 )
 
 CORS_ALLOW_CREDENTIALS = True
+
+# The AI provider key is server-only and must never be passed into Next.js.
+AI_PROVIDER = config('AI_PROVIDER', default='openai')
+AI_API_KEY = config('AI_API_KEY', default='')
+AI_MODEL = config('AI_MODEL', default='gpt-4o-mini')
 
 # ============================================================================
 # Cloudinary Configuration

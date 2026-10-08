@@ -6,6 +6,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Navbar } from '@/components/Navbar'
 import { AuthInitializer } from '@/components/AuthInitializer'
+import { FloatingBookingAssistant } from '@/components/FloatingBookingAssistant'
 import { GoogleAnalytics } from '@/components/GoogleAnalytics'
 import { AdSense } from '@/components/AdSense'
 import { getAdSenseClient } from '@/lib/adsense'
@@ -69,6 +70,7 @@ export default function RootLayout({
         <main className="min-h-screen">
           {children}
         </main>
+        <FloatingBookingAssistant />
         <footer className="bg-gray-900 text-white mt-16 py-8">
           <div className="max-w-7xl mx-auto px-4 text-center">
             <nav aria-label="Footer" className="mb-4 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-gray-300">

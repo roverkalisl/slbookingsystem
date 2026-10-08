@@ -45,6 +45,7 @@ urlpatterns = [
     path('api/reviews/', include('apps.reviews.urls', namespace='reviews')),
     path('api/payments/', include('apps.payments.urls', namespace='payments')),
     path('api/notifications/', include('apps.notifications.urls', namespace='notifications')),
+    path('api/assistant/', include('apps.assistant.urls', namespace='assistant')),
 ]
 
 # Dynamic Next.js routes. The static export pre-renders each [id] page only
